@@ -697,3 +697,155 @@ Al correr `node prisma/seed.js` se crean automáticamente:
 ---
 
 *Documentación generada para Eagle Gaming POS v1.0*
+
+
+🛒 Sistema POS - Backend
+Backend de un sistema de Punto de Venta (POS) desarrollado con Node.js, Express y Prisma ORM con base de datos PostgreSQL.
+
+📁 Estructura del Proyecto
+Sistema-POS-Backend/
+├── prisma/
+│   ├── schema.prisma       # Modelos de la base de datos
+│   └── seed.js             # Datos iniciales (seed)
+├── src/
+│   ├── controllers/        # Lógica de negocio
+│   │   ├── auth.controller.js
+│   │   ├── categories.controller.js
+│   │   ├── customers.controller.js
+│   │   ├── notifications.controller.js
+│   │   ├── products.controller.js
+│   │   ├── sales.controller.js
+│   │   └── users.controller.js
+│   ├── helpers/            # Utilidades reutilizables
+│   │   ├── jwt.helper.js
+│   │   └── pagination.helper.js
+│   ├── libs/
+│   │   └── prisma.js       # Instancia de Prisma Client
+│   ├── middlewares/        # Middlewares de Express
+│   └── routes/             # Definición de rutas
+│       ├── auth.routes.js
+│       ├── categories.routes.js
+│       ├── customers.routes.js
+│       ├── notifications.routes.js
+│       ├── products.routes.js
+│       ├── sales.routes.js
+│       └── users.routes.js
+├── app.js                  # Punto de entrada de la aplicación
+├── .env                    # Variables de entorno
+├── .gitignore
+├── package.json
+├── package-lock.json
+├── prisma.config.ts
+└── README.md
+
+⚙️ Tecnologías Utilizadas
+TecnologíaDescripciónNode.jsEntorno de ejecución de JavaScriptExpress.jsFramework web para Node.jsPrisma ORMORM moderno para base de datosPostgreSQLBase de datos relacionalJWTAutenticación mediante tokens
+
+🚀 Instalación y Configuración
+1. Clonar el repositorio
+bashgit clone https://github.com/tu-usuario/Sistema-POS-Backend.git
+cd Sistema-POS-Backend
+2. Instalar dependencias
+bashnpm install
+3. Configurar variables de entorno
+Crea un archivo .env en la raíz del proyecto con el siguiente contenido:
+envDATABASE_URL="postgresql://postgres:TU_PASSWORD@localhost:5432/pos_db"
+JWT_SECRET="tu-secreto-jwt-seguro"
+PORT=3000
+
+⚠️ Nunca subas el archivo .env a repositorios públicos.
+
+4. Configurar la base de datos
+bash# Ejecutar migraciones
+npx prisma migrate dev
+
+# (Opcional) Cargar datos de prueba
+npx prisma db seed
+5. Iniciar el servidor
+bash# Desarrollo
+npm run dev
+
+# Producción
+npm start
+El servidor estará disponible en: http://localhost:3000
+
+🔐 Autenticación
+El sistema usa JWT (JSON Web Tokens) para proteger las rutas privadas.
+
+Al hacer login, el servidor retorna un token.
+Incluye el token en el header de cada petición protegida:
+
+Authorization: Bearer <tu_token>
+
+📡 Módulos del Sistema
+🔑 Auth
+Manejo de autenticación de usuarios.
+MétodoRutaDescripciónAuthPOST/api/auth/loginIniciar sesión❌
+
+👤 Users
+Gestión de usuarios del sistema.
+MétodoRutaDescripciónAuthGET/api/usersListar usuarios
+✅POST/api/usersCrear usuario
+✅PUT/api/users/:idActualizar usuario
+✅DELETE/api/users/:idEliminar usuario✅
+
+🏷️ Categories
+Gestión de categorías de productos.
+MétodoRutaDescripciónAuthGET/api/categoriesListar categorías
+✅POST/api/categoriesCrear categoría
+✅PUT/api/categories/:idActualizar categoría
+✅DELETE/api/categories/:idEliminar categoría✅
+
+📦 Products
+Gestión del catálogo de productos.
+MétodoRutaDescripciónAuthGET/api/productsListar 
+productos✅GET/api/products/:idObtener 
+producto✅POST/api/productsCrear 
+producto✅PUT/api/products/:idActualizar 
+producto✅DELETE/api/products/:idEliminar producto
+
+👥 Customers
+Gestión de clientes.
+MétodoRutaDescripciónAuthGET/api/customersListar 
+clientes✅GET/api/customers/:idObtener cliente
+✅POST/api/customersCrear cliente
+✅PUT/api/customers/:idActualizar cliente
+✅DELETE/api/customers/:idEliminar cliente
+
+🧾 Sales
+Registro y gestión de ventas.
+MétodoRutaDescripciónAuthGET/api/salesListar ventas
+✅GET/api/sales/:idDetalle de venta
+✅POST/api/salesRegistrar venta
+
+🔔 Notifications
+Sistema de notificaciones internas.
+MétodoRutaDescripciónAuthGET/api/notificationsListar notificaciones
+✅PUT/api/notifications/:idMarcar como leída
+
+🛠️ Helpers
+jwt.helper.js
+
+generateToken(payload) — Genera un JWT firmado.
+verifyToken(token) — Verifica y decodifica un token.
+
+pagination.helper.js
+
+Utilidad para paginar resultados de consultas a la base de datos.
+Parámetros soportados: page, limit.
+
+
+🗃️ Base de Datos
+El proyecto usa Prisma como ORM. El esquema se define en prisma/schema.prisma.
+Comandos útiles:
+bash# Ver la base de datos visualmente
+npx prisma studio
+
+# Generar cliente de Prisma tras cambios en el schema
+npx prisma generate
+
+# Crear una nueva migración
+npx prisma migrate dev --name nombre_migracion
+
+📝 Variables de Entorno
+VariableDescripciónEjemploDATABASE_URLURL de conexión a PostgreSQLpostgresql://user:pass@localhost:5432/dbJWT_SECRETClave secreta para firmar tokens JWTmi-secreto-seguroPORTPuerto en que corre el servidor3000
