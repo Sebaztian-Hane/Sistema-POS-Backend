@@ -1,14 +1,5 @@
-const { Prisma } = require("@prisma/client");
-const prisma = require("../libs/prisma");
+const productsService = require("../services/products.service");
 const { parsePagination, buildPaginationMeta } = require("../helpers/pagination.helper");
-
-function toDecimal(value, fallback = 0) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return new Prisma.Decimal(fallback.toFixed(2));
-  }
-  return new Prisma.Decimal(n.toFixed(2));
-}
 
 function parseBool(value) {
   if (value === undefined || value === null || value === "") return undefined;
@@ -26,30 +17,13 @@ async function list(req, res, next) {
     const name = req.query.name ? String(req.query.name).trim() : "";
     const isActive = parseBool(req.query.isActive);
 
-    const where = {};
-    if (Number.isFinite(categoryId)) {
-      where.categoryId = categoryId;
-    }
-    if (name) {
-      where.name = { contains: name, mode: "insensitive" };
-    }
-    if (typeof isActive === "boolean") {
-      where.isActive = isActive;
-    }
-
-    const [total, data] = await Promise.all([
-      prisma.product.count({ where }),
-      prisma.product.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        include: {
-          category: { select: { id: true, name: true } },
-          images: { orderBy: { order: "asc" } },
-        },
-      }),
-    ]);
+    const { total, data } = await productsService.list(
+      skip,
+      limit,
+      categoryId,
+      name,
+      isActive
+    );
 
     res.json({
       data,
@@ -66,13 +40,7 @@ async function getOne(req, res, next) {
     if (!Number.isFinite(id)) {
       return res.status(400).json({ message: "ID inválido" });
     }
-    const product = await prisma.product.findUnique({
-      where: { id },
-      include: {
-        category: true,
-        images: { orderBy: { order: "asc" } },
-      },
-    });
+    const product = await productsService.getOne(id);
     if (!product) {
       return res.status(404).json({ message: "Producto no encontrado" });
     }
@@ -105,30 +73,20 @@ async function create(req, res, next) {
       return res.status(400).json({ message: "name y price son obligatorios" });
     }
 
-    const product = await prisma.product.create({
-      data: {
-        sku: sku ?? null,
-        name: String(name),
-        description: description ?? null,
-        price: toDecimal(price),
-        cost: cost !== undefined && cost !== null ? toDecimal(cost) : null,
-        stockCurrent:
-          stockCurrent !== undefined ? parseInt(stockCurrent, 10) || 0 : 0,
-        stockMin: stockMin !== undefined ? parseInt(stockMin, 10) || 0 : 0,
-        categoryId:
-          categoryId !== undefined && categoryId !== null
-            ? parseInt(categoryId, 10)
-            : null,
-        coverImageUrl: coverImageUrl ?? null,
-        gallery: gallery ?? undefined,
-        tags: tags ?? undefined,
-        isFeatured: Boolean(isFeatured),
-        isActive: isActive !== undefined ? Boolean(isActive) : true,
-      },
-      include: {
-        category: true,
-        images: true,
-      },
+    const product = await productsService.create({
+      sku: sku ?? null,
+      name: String(name),
+      description: description ?? null,
+      price,
+      cost: cost !== undefined && cost !== null ? cost : null,
+      stockCurrent: stockCurrent !== undefined ? parseInt(stockCurrent, 10) || 0 : 0,
+      stockMin: stockMin !== undefined ? parseInt(stockMin, 10) || 0 : 0,
+      categoryId: categoryId !== undefined && categoryId !== null ? parseInt(categoryId, 10) : null,
+      coverImageUrl: coverImageUrl ?? null,
+      gallery: gallery ?? undefined,
+      tags: tags ?? undefined,
+      isFeatured: Boolean(isFeatured),
+      isActive: isActive !== undefined ? Boolean(isActive) : true,
     });
 
     res.status(201).json(product);
@@ -153,8 +111,8 @@ async function update(req, res, next) {
     if (body.sku !== undefined) data.sku = body.sku;
     if (body.name !== undefined) data.name = String(body.name);
     if (body.description !== undefined) data.description = body.description;
-    if (body.price !== undefined) data.price = toDecimal(body.price);
-    if (body.cost !== undefined) data.cost = body.cost === null ? null : toDecimal(body.cost);
+    if (body.price !== undefined) data.price = body.price;
+    if (body.cost !== undefined) data.cost = body.cost;
     if (body.stockMin !== undefined) data.stockMin = parseInt(body.stockMin, 10) || 0;
     if (body.categoryId !== undefined) {
       data.categoryId =
@@ -170,11 +128,7 @@ async function update(req, res, next) {
       return res.status(400).json({ message: "No hay campos para actualizar" });
     }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data,
-      include: { category: true, images: true },
-    });
+    const product = await productsService.update(id, data);
 
     res.json(product);
   } catch (err) {
@@ -195,11 +149,7 @@ async function softDelete(req, res, next) {
       return res.status(400).json({ message: "ID inválido" });
     }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data: { isActive: false },
-      include: { category: true, images: true },
-    });
+    const product = await productsService.softDelete(id);
 
     res.json(product);
   } catch (err) {
@@ -226,39 +176,7 @@ async function adjustStock(req, res, next) {
 
     const note = req.body?.note ? String(req.body.note) : null;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUnique({ where: { id } });
-      if (!product) {
-        const e = new Error("Producto no encontrado");
-        e.statusCode = 404;
-        throw e;
-      }
-
-      const nextStock = product.stockCurrent + delta;
-      if (nextStock < 0) {
-        const e = new Error("El ajuste dejaría el stock negativo");
-        e.statusCode = 400;
-        throw e;
-      }
-
-      const updated = await tx.product.update({
-        where: { id },
-        data: { stockCurrent: nextStock },
-        include: { category: true, images: true },
-      });
-
-      await tx.stockMovement.create({
-        data: {
-          productId: id,
-          type: "AJUSTE",
-          quantity: delta,
-          referenceId: null,
-          note,
-        },
-      });
-
-      return updated;
-    });
+    const result = await productsService.adjustStock(id, delta, note);
 
     res.json(result);
   } catch (err) {

@@ -1,6 +1,5 @@
-const bcrypt = require("bcryptjs");
-const prisma = require("../libs/prisma");
 const { generateToken } = require("../helpers/jwt.helper");
+const authService = require("../services/auth.service");
 
 async function login(req, res, next) {
   try {
@@ -12,20 +11,9 @@ async function login(req, res, next) {
       });
     }
 
-    const normalizedEmail = String(email).trim();
-    const user = await prisma.user.findFirst({
-      where: {
-        email: { equals: normalizedEmail, mode: "insensitive" },
-      },
-      include: { role: true },
-    });
+    const user = await authService.verifyCredentials(email, password);
 
-    if (!user || !user.isActive) {
-      return res.status(401).json({ message: "Credenciales incorrectas" });
-    }
-
-    const match = await bcrypt.compare(String(password), user.passwordHash);
-    if (!match) {
+    if (!user) {
       return res.status(401).json({ message: "Credenciales incorrectas" });
     }
 
