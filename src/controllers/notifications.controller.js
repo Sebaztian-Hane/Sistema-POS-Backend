@@ -1,11 +1,8 @@
-const prisma = require("../libs/prisma");
+const notificationsService = require("../services/notifications.service");
 
 async function listUnread(req, res, next) {
   try {
-    const data = await prisma.notification.findMany({
-      where: { isRead: false },
-      orderBy: { createdAt: "desc" },
-    });
+    const data = await notificationsService.listUnread();
     res.json(data);
   } catch (err) {
     next(err);
@@ -19,10 +16,7 @@ async function markRead(req, res, next) {
       return res.status(400).json({ message: "ID inválido" });
     }
 
-    const notification = await prisma.notification.update({
-      where: { id },
-      data: { isRead: true },
-    });
+    const notification = await notificationsService.markRead(id);
 
     res.json(notification);
   } catch (err) {
@@ -35,11 +29,8 @@ async function markRead(req, res, next) {
 
 async function markAllRead(req, res, next) {
   try {
-    const result = await prisma.notification.updateMany({
-      where: { isRead: false },
-      data: { isRead: true },
-    });
-    res.json({ updated: result.count });
+    const result = await notificationsService.markAllRead();
+    res.json(result);
   } catch (err) {
     next(err);
   }
