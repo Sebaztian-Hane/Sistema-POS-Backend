@@ -56,13 +56,19 @@ model Category {
 
 model Product {
   id             Int             @id @default(autoincrement())
-  sku            String?         @unique
+  upc            String?         @unique
   name           String
   description    String?
   price          Decimal         @db.Decimal(10, 2)
   cost           Decimal?        @db.Decimal(10, 2)
+
+  // Indicador para saber si el producto esta serializado
+  isSerialized   Boolean         @default(false)
+
+  // Campos para productos simples (sin número de serie)
   stockCurrent   Int             @default(0)
   stockMin       Int             @default(0)
+
   categoryId     Int?
   coverImageUrl  String?
   gallery        Json?
@@ -74,7 +80,39 @@ model Product {
   images         ProductImage[]
   saleItems      SaleItem[]
   stockMovements StockMovement[]
+
+  // Relación para unidades serializadas
+  items          ProductItem[]
 }
+
+
+// Modelo de la tabla que almacena todos los productos serializados
+model ProductItem {
+  id              Int            @id @default(autoincrement())
+  // Número serie único
+  serialNumber    String         @unique
+
+  // Estado de la unidad         
+  status          ItemStatus     @default(DISPONIBLE)
+  productId       Int
+  product         Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Relación con la venta
+  saleItemId      Int?           @unique
+  saleItem        SaleItem?       @relation(fields: [saleItemId], references: [id])
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+enum ItemStatus {
+  DISPONIBLE
+  VENDIDO
+  DEVUELTO
+  DEBAJA
+  EN_REPARACIÓN
+}
+
 
 model ProductImage {
   id        Int     @id @default(autoincrement())
@@ -135,6 +173,8 @@ model SaleItem {
   subtotal       Decimal @db.Decimal(10, 2)
   sale           Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product        Product @relation(fields: [productId], references: [id])
+
+  productItem    ProductItem?
 }
 
 model PaymentMethod {

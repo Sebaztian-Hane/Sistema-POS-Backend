@@ -419,36 +419,109 @@ Frontend: POST /api/sales
 
 ---
 
-## Instalación y configuración
+## 🚀 Instalación y configuración (Docker - Recomendado)
 
-### Requisitos previos
-- Node.js 18+
-- PostgreSQL 14+
-- npm
+Sigue estos pasos para levantar el entorno de desarrollo desde cero en menos de 5 minutos:
 
-### Pasos
+### 1. Requisitos previos
+- **Node.js** 18 o superior.
+- **Docker** instalado y en ejecución.
+- **npm** (viene con Node.js).
+
+### 2. Levantar la Base de Datos con Docker
+No necesitas instalar PostgreSQL en tu sistema. Ejecuta este comando para crear un contenedor listo para usar:
 
 ```bash
-# 1. Clonar el repositorio
-git clone <url-del-repo>
-cd eagle-gaming-pos/backend
+docker run --name eagle-pos-db \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=admin123 \
+  -e POSTGRES_DB=eagle_pos \
+  -p 5432:5432 \
+  -d postgres
+```
 
-# 2. Instalar dependencias
+### 3. Configurar variables de entorno
+Crea un archivo `.env` en la raíz de la carpeta `backend/` con el siguiente contenido exacto:
+
+```env
+# Conexión a la base de datos (Docker)
+DATABASE_URL="postgresql://postgres:admin123@localhost:5432/eagle_pos?schema=public"
+
+# Seguridad
+JWT_SECRET="eagle_gaming_pos_secret_key_2024"
+
+# Servidor
+PORT=3000
+```
+
+### 4. Preparar el Proyecto y la DB
+Ejecuta estos comandos en orden dentro de la terminal:
+
+```bash
+# 1. Instalar dependencias
 npm install
 
-# 3. Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus datos de PostgreSQL
+# 2. Generar el cliente de Prisma
+npx prisma generate
 
-# 4. Crear las tablas en la BD
-npx prisma migrate dev --name init
+# 3. Crear las tablas (Migración)
+npx prisma migrate dev --name init_firme
 
-# 5. Cargar datos iniciales
+# 4. Cargar datos iniciales (Roles, Admin, Productos)
 node prisma/seed.js
+```
 
-# 6. Iniciar el servidor en desarrollo
+### 5. Iniciar el servidor
+```bash
 npm run dev
 ```
+
+---
+
+## 🛠️ Instalación Manual (PostgreSQL Local)
+
+Si prefieres usar una instalación de PostgreSQL que ya tengas en tu sistema:
+
+### 1. Preparar la Base de Datos
+- Asegúrate de que el servicio de PostgreSQL esté corriendo.
+- Crea una base de datos vacía llamada `eagle_pos` (o el nombre que prefieras).
+
+### 2. Configurar el .env
+Ajusta la URL de conexión con tu usuario y contraseña locales:
+```env
+DATABASE_URL="postgresql://TU_USUARIO:TU_PASSWORD@localhost:5432/eagle_pos"
+```
+*Nota: Si tienes Docker corriendo en el mismo puerto (5432), deberás apagar el contenedor o cambiar el puerto de uno de los dos.*
+
+### 3. Sincronizar
+```bash
+npm install
+npx prisma generate
+npx prisma migrate dev --name init
+node prisma/seed.js
+```
+
+
+---
+
+## 🐳 Comandos Útiles de Docker
+
+| Acción | Comando |
+|---|---|
+| Ver si la DB está corriendo | `docker ps` |
+| Encender la DB (si reiniciaste tu PC) | `docker start eagle-pos-db` |
+| Apagar la DB | `docker stop eagle-pos-db` |
+| Ver errores de la DB | `docker logs eagle-pos-db` |
+
+---
+
+## 🔑 Variables de entorno (.env)
+
+| Variable | Descripción | Ejemplo |
+|---|---|---|
+| `DATABASE_URL` | URL de conexión a PostgreSQL | `postgresql://user:pass@localhost:5432/db` |
+| `JWT_SECRET` | Clave secreta para firmar tokens JWT | `un-secreto-muy-seguro` |
+| `PORT` | Puerto en que corre el servidor | `3000` |
 
 ---
 
@@ -638,23 +711,6 @@ model Notification {
 
 ---
 
-## Variables de entorno
-
-```bash
-# .env
-
-# Conexión a PostgreSQL
-DATABASE_URL="postgresql://usuario:password@localhost:5432/eagle_gaming_pos"
-
-# Clave secreta para firmar los JWT
-JWT_SECRET="tu_clave_secreta_aqui_debe_ser_larga_y_segura"
-
-# Puerto del servidor
-PORT=3000
-```
-
----
-
 ## Scripts disponibles
 
 ```bash
@@ -703,6 +759,8 @@ Al correr `node prisma/seed.js` se crean automáticamente:
 Backend de un sistema de Punto de Venta (POS) desarrollado con Node.js, Express y Prisma ORM con base de datos PostgreSQL.
 
 📁 Estructura del Proyecto
+
+```
 Sistema-POS-Backend/
 ├── prisma/
 │   ├── schema.prisma       # Modelos de la base de datos
@@ -737,108 +795,64 @@ Sistema-POS-Backend/
 ├── package-lock.json
 ├── prisma.config.ts
 └── README.md
+```
 
-⚙️ Tecnologías Utilizadas
-TecnologíaDescripciónNode.jsEntorno de ejecución de JavaScriptExpress.jsFramework web para Node.jsPrisma ORMORM moderno para base de datosPostgreSQLBase de datos relacionalJWTAutenticación mediante tokens
+## ⚙️ Tecnologías Utilizadas
 
-🚀 Instalación y Configuración
-1. Clonar el repositorio
-bashgit clone https://github.com/tu-usuario/Sistema-POS-Backend.git
-cd Sistema-POS-Backend
-2. Instalar dependencias
-bashnpm install
-3. Configurar variables de entorno
-Crea un archivo .env en la raíz del proyecto con el siguiente contenido:
-envDATABASE_URL="postgresql://postgres:TU_PASSWORD@localhost:5432/pos_db"
-JWT_SECRET="tu-secreto-jwt-seguro"
-PORT=3000
+| Tecnología | Descripción |
+|---|---|
+| **Node.js** | Entorno de ejecución de JavaScript |
+| **Express.js** | Framework web para Node.js |
+| **Prisma ORM** | ORM moderno para base de datos |
+| **PostgreSQL** | Base de datos relacional |
+| **JWT** | Autenticación mediante tokens |
 
-⚠️ Nunca subas el archivo .env a repositorios públicos.
+---
 
-4. Configurar la base de datos
-bash# Ejecutar migraciones
-npx prisma migrate dev
+## 📡 Módulos del Sistema y Endpoints
 
-# (Opcional) Cargar datos de prueba
-npx prisma db seed
-5. Iniciar el servidor
-bash# Desarrollo
-npm run dev
+### 🔑 Autenticación (Auth)
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/api/auth/login` | Iniciar sesión y obtener JWT |
 
-# Producción
-npm start
-El servidor estará disponible en: http://localhost:3000
+### 📦 Inventario y Productos
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/products` | Listar productos (con paginado) |
+| `GET` | `/api/products/:id` | Ver detalle y números de serie |
+| `PATCH` | `/api/products/:id/stock` | Ajustar stock (no serializados) |
+| `POST` | `/api/products/:id/items` | Agregar números de serie |
 
-🔐 Autenticación
-El sistema usa JWT (JSON Web Tokens) para proteger las rutas privadas.
+### 💰 Ventas (Sales)
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/sales` | Historial de ventas (filtros: `userId`, `customerId`) |
+| `POST` | `/api/sales` | Crear nueva venta (mixta o simple) |
+| `PATCH` | `/api/sales/:id/anular` | Anular venta y devolver stock |
 
-Al hacer login, el servidor retorna un token.
-Incluye el token en el header de cada petición protegida:
+### 👥 Clientes y Usuarios
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/customers` | Listar clientes registrados |
+| `POST` | `/api/customers` | Registrar nuevo cliente |
+| `GET` | `/api/users` | Listar personal (Solo Admin) |
+| `POST` | `/api/users` | Registrar nuevo personal |
 
-Authorization: Bearer <tu_token>
+---
 
-📡 Módulos del Sistema
-🔑 Auth
-Manejo de autenticación de usuarios.
-MétodoRutaDescripciónAuthPOST/api/auth/loginIniciar sesión❌
+## 🔐 Seguridad y Roles
+El sistema utiliza **JWT (JSON Web Tokens)** para proteger las rutas.
+- **ADMIN**: Acceso total al sistema.
+- **CASHIER**: Ventas y consulta de productos.
+- **WAREHOUSE**: Gestión de stock y seriales.
 
-👤 Users
-Gestión de usuarios del sistema.
-MétodoRutaDescripciónAuthGET/api/usersListar usuarios
-✅POST/api/usersCrear usuario
-✅PUT/api/users/:idActualizar usuario
-✅DELETE/api/users/:idEliminar usuario✅
+---
 
-🏷️ Categories
-Gestión de categorías de productos.
-MétodoRutaDescripciónAuthGET/api/categoriesListar categorías
-✅POST/api/categoriesCrear categoría
-✅PUT/api/categories/:idActualizar categoría
-✅DELETE/api/categories/:idEliminar categoría✅
-
-📦 Products
-Gestión del catálogo de productos.
-MétodoRutaDescripciónAuthGET/api/productsListar 
-productos✅GET/api/products/:idObtener 
-producto✅POST/api/productsCrear 
-producto✅PUT/api/products/:idActualizar 
-producto✅DELETE/api/products/:idEliminar producto
-
-👥 Customers
-Gestión de clientes.
-MétodoRutaDescripciónAuthGET/api/customersListar 
-clientes✅GET/api/customers/:idObtener cliente
-✅POST/api/customersCrear cliente
-✅PUT/api/customers/:idActualizar cliente
-✅DELETE/api/customers/:idEliminar cliente
-
-🧾 Sales
-Registro y gestión de ventas.
-MétodoRutaDescripciónAuthGET/api/salesListar ventas
-✅GET/api/sales/:idDetalle de venta
-✅POST/api/salesRegistrar venta
-
-🔔 Notifications
-Sistema de notificaciones internas.
-MétodoRutaDescripciónAuthGET/api/notificationsListar notificaciones
-✅PUT/api/notifications/:idMarcar como leída
-
-🛠️ Helpers
-jwt.helper.js
-
-generateToken(payload) — Genera un JWT firmado.
-verifyToken(token) — Verifica y decodifica un token.
-
-pagination.helper.js
-
-Utilidad para paginar resultados de consultas a la base de datos.
-Parámetros soportados: page, limit.
-
-
-🗃️ Base de Datos
-El proyecto usa Prisma como ORM. El esquema se define en prisma/schema.prisma.
-Comandos útiles:
-bash# Ver la base de datos visualmente
+## 🗃️ Base de Datos (Prisma)
+Comandos útiles para el desarrollo:
+```bash
+# Ver la base de datos visualmente
 npx prisma studio
 
 # Generar cliente de Prisma tras cambios en el schema
@@ -846,6 +860,7 @@ npx prisma generate
 
 # Crear una nueva migración
 npx prisma migrate dev --name nombre_migracion
+```
 
-📝 Variables de Entorno
-VariableDescripciónEjemploDATABASE_URLURL de conexión a PostgreSQLpostgresql://user:pass@localhost:5432/dbJWT_SECRETClave secreta para firmar tokens JWTmi-secreto-seguroPORTPuerto en que corre el servidor3000
+---
+© 2024 Eagle Gaming POS - Sistema de Gestión de Inventario

@@ -13,6 +13,14 @@ async function list(req, res, next) {
       }
     }
 
+    let customerId;
+    if (req.query.customerId !== undefined && req.query.customerId !== "") {
+      const cid = parseInt(String(req.query.customerId), 10);
+      if (Number.isFinite(cid)) {
+        customerId = cid;
+      }
+    }
+
     let from, to;
     if (req.query.from) {
       const fromDate = new Date(String(req.query.from));
@@ -28,7 +36,7 @@ async function list(req, res, next) {
       }
     }
 
-    const { total, data } = await salesService.list(skip, limit, userId, from, to);
+    const { total, data } = await salesService.list(skip, limit, userId, from, to, customerId);
 
     res.json({
       data,
