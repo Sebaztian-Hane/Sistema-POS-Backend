@@ -13,11 +13,15 @@ function decNum(d) {
   return Number(d);
 }
 
-async function list(skip, limit, userId, from, to) {
+async function list(skip, limit, userId, from, to, customerId) {
   const where = {};
 
   if (userId !== undefined && userId !== null) {
     where.userId = userId;
+  }
+
+  if (customerId !== undefined && customerId !== null) {
+    where.customerId = parseInt(customerId, 10);
   }
 
   if (from || to) {
@@ -60,7 +64,7 @@ async function getOne(id) {
         },
       },
       customer: true,
-      items: { include: { product: { select: { id: true, sku: true } } } },
+      items: { include: { product: { select: { id: true, upc: true } } } },
       payments: { include: { paymentMethod: true } },
     },
   });
@@ -134,161 +138,171 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
         where: { id: customerId, isActive: true },
       });
       if (!c) {
-        const e = new Error("Cliente no encontrado o inactivo");
-        e.statusCode = 404;
-        throw e;
+        throw Object.assign(new Error("Cliente no encontrado o inactivo"), { statusCode: 404 });
       }
     }
 
     const productIds = [...new Set(lineInputs.map((l) => l.productId))];
     const products = await tx.product.findMany({
-      where: {
-        id: { in: productIds },
-        isActive: true,
-      },
+      where: { id: { in: productIds }, isActive: true },
     });
     const byId = new Map(products.map((p) => [p.id, p]));
+
     if (products.length !== productIds.length) {
-      const e = new Error("Uno o más productos no existen o están inactivos");
-      e.statusCode = 400;
-      throw e;
+      throw Object.assign(new Error("Uno o más productos no existen o están inactivos"), { statusCode: 400 });
     }
 
     let subtotalGross = new Prisma.Decimal(0);
     let sumLineDesc = new Prisma.Decimal(0);
-    const builtLines = [];
+    const saleItemsData = [];
 
-    for (const line of lineInputs) {
-      const p = byId.get(line.productId);
+    for (const line of items) {
+      const productId = parseInt(line.productId, 10);
+      const p = byId.get(productId);
       const price = p.price;
-      const lineGross = price.mul(line.quantity);
-      subtotalGross = subtotalGross.add(lineGross);
-      sumLineDesc = sumLineDesc.add(line.descuento);
-      const lineSubtotal = lineGross.sub(line.descuento);
-      if (decNum(lineSubtotal) < 0) {
-        const e = new Error("El descuento del ítem supera el subtotal bruto");
-        e.statusCode = 400;
-        throw e;
+      const quantity = parseInt(line.quantity, 10);
+      const descuentoTotal = toDecimal(line.descuento ?? 0);
+
+      if (p.isSerialized) {
+        // Validación para productos serializados
+        const serials = line.serialNumbers || [];
+        if (serials.length !== quantity) {
+          throw Object.assign(
+            new Error(`Debe proporcionar exactamente ${quantity} números de serie para "${p.name}"`),
+            { statusCode: 400 }
+          );
+        }
+
+        // Para productos serializados, creamos un SaleItem por cada unidad (por la relación 1-1 del esquema)
+        const descPerUnit = descuentoTotal.div(quantity);
+        for (const sn of serials) {
+          const itemSubtotal = price.sub(descPerUnit);
+          subtotalGross = subtotalGross.add(price);
+          sumLineDesc = sumLineDesc.add(descPerUnit);
+
+          saleItemsData.push({
+            productId,
+            nombreSnapshot: p.name,
+            precioSnapshot: price,
+            quantity: 1,
+            descuento: descPerUnit,
+            subtotal: itemSubtotal,
+            serialNumber: sn, // Campo temporal para procesar después
+          });
+        }
+      } else {
+        // Producto normal
+        const lineGross = price.mul(quantity);
+        const lineSubtotal = lineGross.sub(descuentoTotal);
+        if (decNum(lineSubtotal) < 0) {
+          throw Object.assign(new Error(`El descuento del ítem "${p.name}" supera el subtotal`), { statusCode: 400 });
+        }
+
+        subtotalGross = subtotalGross.add(lineGross);
+        sumLineDesc = sumLineDesc.add(descuentoTotal);
+
+        saleItemsData.push({
+          productId,
+          nombreSnapshot: p.name,
+          precioSnapshot: price,
+          quantity,
+          descuento: descuentoTotal,
+          subtotal: lineSubtotal,
+        });
       }
-      builtLines.push({
-        productId: line.productId,
-        nombreSnapshot: p.name,
-        precioSnapshot: price,
-        quantity: line.quantity,
-        descuento: line.descuento,
-        subtotal: lineSubtotal,
-      });
     }
 
-    const saleDescuento = sumLineDesc.add(extraDescuento);
-    const sumLineSubtotals = builtLines.reduce(
-      (acc, l) => acc.add(l.subtotal),
-      new Prisma.Decimal(0),
-    );
-    const total = sumLineSubtotals.sub(extraDescuento);
-
+    const total = subtotalGross.sub(sumLineDesc).sub(extraDescuento);
     if (decNum(total) < 0) {
-      const e = new Error("El total de la venta no puede ser negativo");
-      e.statusCode = 400;
-      throw e;
+      throw Object.assign(new Error("El total de la venta no puede ser negativo"), { statusCode: 400 });
     }
 
-    const paySum = paymentInputs.reduce(
-      (acc, p) => acc.add(p.amount),
-      new Prisma.Decimal(0),
-    );
-    const diff = Math.abs(decNum(paySum) - decNum(total));
-    if (diff > 0.02) {
-      const e = new Error("La suma de pagos debe coincidir con el total de la venta");
-      e.statusCode = 400;
-      throw e;
+    // Validar pagos
+    const paySum = paymentInputs.reduce((acc, p) => acc.add(p.amount), new Prisma.Decimal(0));
+    if (Math.abs(decNum(paySum) - decNum(total)) > 0.02) {
+      throw Object.assign(new Error("La suma de pagos no coincide con el total"), { statusCode: 400 });
     }
 
-    for (const pm of paymentInputs) {
-      const method = await tx.paymentMethod.findFirst({
-        where: { id: pm.paymentMethodId, isActive: true },
-      });
-      if (!method) {
-        const e = new Error("Método de pago no encontrado o inactivo");
-        e.statusCode = 400;
-        throw e;
-      }
-    }
-
+    // Validar stock y disponibilidad de seriales
     if (saleStatus === "COMPLETADA" || saleStatus === "PENDIENTE_PAGO") {
-      for (const line of lineInputs) {
-        const p = byId.get(line.productId);
-        if (p.stockCurrent < line.quantity) {
-          const e = new Error(`Stock insuficiente para el producto "${p.name}"`);
-          e.statusCode = 400;
-          throw e;
+      for (const line of items) {
+        const p = byId.get(parseInt(line.productId, 10));
+        if (p.stockCurrent < parseInt(line.quantity, 10)) {
+          throw Object.assign(new Error(`Stock insuficiente para "${p.name}"`), { statusCode: 400 });
+        }
+        
+        if (p.isSerialized) {
+          for (const sn of line.serialNumbers) {
+            const item = await tx.productItem.findUnique({ where: { serialNumber: sn } });
+            if (!item || item.productId !== p.id || item.status !== "DISPONIBLE") {
+              throw Object.assign(new Error(`El serial "${sn}" no está disponible`), { statusCode: 400 });
+            }
+          }
         }
       }
     }
 
+    // Crear la venta
     const created = await tx.sale.create({
       data: {
         userId,
         customerId,
         subtotal: subtotalGross,
-        descuento: saleDescuento,
+        descuento: sumLineDesc.add(extraDescuento),
         total,
         status: saleStatus,
-        items: {
-          create: builtLines.map((l) => ({
-            productId: l.productId,
-            nombreSnapshot: l.nombreSnapshot,
-            precioSnapshot: l.precioSnapshot,
-            quantity: l.quantity,
-            descuento: l.descuento,
-            subtotal: l.subtotal,
-          })),
-        },
         payments: {
           create: paymentInputs.map((p) => ({
             paymentMethodId: p.paymentMethodId,
             amount: p.amount,
           })),
         },
+        items: {
+          create: saleItemsData.map(({ serialNumber, ...rest }) => rest),
+        },
       },
-      include: {
-        items: true,
-        payments: { include: { paymentMethod: true } },
-        customer: true,
-        user: { select: { id: true, username: true, email: true } },
-      },
+      include: { items: true },
     });
 
     if (saleStatus === "COMPLETADA") {
-      for (const line of lineInputs) {
-        const updated = await tx.product.updateMany({
-          where: {
-            id: line.productId,
-            stockCurrent: { gte: line.quantity },
-          },
-          data: { stockCurrent: { decrement: line.quantity } },
-        });
-        if (updated.count === 0) {
-          const e = new Error("No se pudo actualizar el stock");
-          e.statusCode = 409;
-          throw e;
+      // Procesar cada SaleItem creado
+      for (const saleItem of created.items) {
+        // Encontrar el serialNumber original para este SaleItem si era serializado
+        const originalData = saleItemsData.find(
+          (d) =>
+            d.productId === saleItem.productId &&
+            d.subtotal.equals(saleItem.subtotal) &&
+            d.serialNumber // Buscamos uno que tenga serialNumber
+        );
+
+        if (originalData && originalData.serialNumber) {
+          // Actualizar ProductItem
+          await tx.productItem.update({
+            where: { serialNumber: originalData.serialNumber },
+            data: { status: "VENDIDO", saleItemId: saleItem.id },
+          });
+          // Eliminar de saleItemsData para no re-usarlo si hay varios iguales
+          const idx = saleItemsData.indexOf(originalData);
+          saleItemsData.splice(idx, 1);
         }
+
+        // Actualizar Stock y Movimiento
+        await tx.product.update({
+          where: { id: saleItem.productId },
+          data: { stockCurrent: { decrement: saleItem.quantity } },
+        });
 
         await tx.stockMovement.create({
           data: {
-            productId: line.productId,
+            productId: saleItem.productId,
             type: "VENTA",
-            quantity: line.quantity,
+            quantity: saleItem.quantity,
             referenceId: created.id,
-            note: null,
           },
         });
-      }
 
-      for (const line of lineInputs) {
-        const fresh = await tx.product.findUnique({
-          where: { id: line.productId },
-        });
+        // Notificación de Stock Mínimo
+        const fresh = await tx.product.findUnique({ where: { id: saleItem.productId } });
         if (fresh && fresh.stockCurrent < fresh.stockMin) {
           await tx.notification.create({
             data: {
@@ -310,27 +324,28 @@ async function anular(id) {
   return await prisma.$transaction(async (tx) => {
     const sale = await tx.sale.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: { include: { productItem: true } } },
     });
 
-    if (!sale) {
-      const e = new Error("Venta no encontrada");
-      e.statusCode = 404;
-      throw e;
-    }
-
-    if (sale.status === "ANULADA") {
-      const e = new Error("La venta ya está anulada");
-      e.statusCode = 400;
-      throw e;
+    if (!sale || sale.status === "ANULADA") {
+      throw Object.assign(new Error("Venta no encontrada o ya anulada"), { statusCode: 400 });
     }
 
     if (sale.status === "COMPLETADA") {
       for (const item of sale.items) {
+        // Devolver stock
         await tx.product.update({
           where: { id: item.productId },
           data: { stockCurrent: { increment: item.quantity } },
         });
+
+        // Si tenía un item serializado, liberarlo
+        if (item.productItem) {
+          await tx.productItem.update({
+            where: { id: item.productItem.id },
+            data: { status: "DISPONIBLE", saleItemId: null },
+          });
+        }
 
         await tx.stockMovement.create({
           data: {
@@ -347,12 +362,7 @@ async function anular(id) {
     const updated = await tx.sale.update({
       where: { id },
       data: { status: "ANULADA" },
-      include: {
-        items: true,
-        payments: { include: { paymentMethod: true } },
-        customer: true,
-        user: { select: { id: true, username: true, email: true } },
-      },
+      include: { items: true, customer: true, user: true },
     });
 
     await tx.notification.create({

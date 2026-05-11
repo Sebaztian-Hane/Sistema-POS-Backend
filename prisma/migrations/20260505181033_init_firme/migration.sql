@@ -2,6 +2,9 @@
 CREATE TYPE "TipoDocumento" AS ENUM ('DNI', 'RUC', 'CE', 'PASAPORTE', 'SIN_DOC');
 
 -- CreateEnum
+CREATE TYPE "ItemStatus" AS ENUM ('DISPONIBLE', 'VENDIDO', 'DEVUELTO', 'DEBAJA', 'EN_REPARACIÓN');
+
+-- CreateEnum
 CREATE TYPE "StockMovementType" AS ENUM ('ENTRADA', 'SALIDA', 'VENTA', 'AJUSTE', 'DEVOLUCION');
 
 -- CreateEnum
@@ -58,11 +61,12 @@ CREATE TABLE "Category" (
 -- CreateTable
 CREATE TABLE "Product" (
     "id" SERIAL NOT NULL,
-    "sku" TEXT,
+    "upc" TEXT,
     "name" TEXT NOT NULL,
     "description" TEXT,
     "price" DECIMAL(10,2) NOT NULL,
     "cost" DECIMAL(10,2),
+    "isSerialized" BOOLEAN NOT NULL DEFAULT false,
     "stockCurrent" INTEGER NOT NULL DEFAULT 0,
     "stockMin" INTEGER NOT NULL DEFAULT 0,
     "categoryId" INTEGER,
@@ -74,6 +78,19 @@ CREATE TABLE "Product" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Product_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ProductItem" (
+    "id" SERIAL NOT NULL,
+    "serialNumber" TEXT NOT NULL,
+    "status" "ItemStatus" NOT NULL DEFAULT 'DISPONIBLE',
+    "productId" INTEGER NOT NULL,
+    "saleItemId" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ProductItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -181,7 +198,16 @@ CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Product_sku_key" ON "Product"("sku");
+CREATE UNIQUE INDEX "Category_name_key" ON "Category"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Product_upc_key" ON "Product"("upc");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ProductItem_serialNumber_key" ON "ProductItem"("serialNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ProductItem_saleItemId_key" ON "ProductItem"("saleItemId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "PaymentMethod_name_key" ON "PaymentMethod"("name");
@@ -191,6 +217,12 @@ ALTER TABLE "User" ADD CONSTRAINT "User_roleId_fkey" FOREIGN KEY ("roleId") REFE
 
 -- AddForeignKey
 ALTER TABLE "Product" ADD CONSTRAINT "Product_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "Category"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductItem" ADD CONSTRAINT "ProductItem_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductItem" ADD CONSTRAINT "ProductItem_saleItemId_fkey" FOREIGN KEY ("saleItemId") REFERENCES "SaleItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ProductImage" ADD CONSTRAINT "ProductImage_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;

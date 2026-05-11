@@ -54,7 +54,7 @@ async function create(req, res, next) {
   try {
     const body = req.body ?? {};
     const {
-      sku,
+      upc,
       name,
       description,
       price,
@@ -66,6 +66,7 @@ async function create(req, res, next) {
       gallery,
       tags,
       isFeatured,
+      isSerialized,
       isActive,
     } = body;
 
@@ -74,7 +75,7 @@ async function create(req, res, next) {
     }
 
     const product = await productsService.create({
-      sku: sku ?? null,
+      upc: upc ?? null,
       name: String(name),
       description: description ?? null,
       price,
@@ -86,13 +87,14 @@ async function create(req, res, next) {
       gallery: gallery ?? undefined,
       tags: tags ?? undefined,
       isFeatured: Boolean(isFeatured),
+      isSerialized: Boolean(isSerialized),
       isActive: isActive !== undefined ? Boolean(isActive) : true,
     });
 
     res.status(201).json(product);
   } catch (err) {
     if (err.code === "P2002") {
-      return res.status(409).json({ message: "SKU o campo único duplicado" });
+      return res.status(409).json({ message: "UPC o campo único duplicado" });
     }
     next(err);
   }
@@ -108,7 +110,7 @@ async function update(req, res, next) {
     const body = req.body ?? {};
     const data = {};
 
-    if (body.sku !== undefined) data.sku = body.sku;
+    if (body.upc !== undefined) data.upc = body.upc;
     if (body.name !== undefined) data.name = String(body.name);
     if (body.description !== undefined) data.description = body.description;
     if (body.price !== undefined) data.price = body.price;
@@ -122,6 +124,7 @@ async function update(req, res, next) {
     if (body.gallery !== undefined) data.gallery = body.gallery;
     if (body.tags !== undefined) data.tags = body.tags;
     if (body.isFeatured !== undefined) data.isFeatured = Boolean(body.isFeatured);
+    if (body.isSerialized !== undefined) data.isSerialized = Boolean(body.isSerialized);
     if (body.isActive !== undefined) data.isActive = Boolean(body.isActive);
 
     if (Object.keys(data).length === 0) {
@@ -136,7 +139,7 @@ async function update(req, res, next) {
       return res.status(404).json({ message: "Producto no encontrado" });
     }
     if (err.code === "P2002") {
-      return res.status(409).json({ message: "SKU duplicado" });
+      return res.status(409).json({ message: "UPC duplicado" });
     }
     next(err);
   }
@@ -187,6 +190,32 @@ async function adjustStock(req, res, next) {
   }
 }
 
+async function addItems(req, res, next) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ message: "ID inválido" });
+    }
+
+    const { serialNumbers, note } = req.body ?? {};
+    if (!Array.isArray(serialNumbers) || serialNumbers.length === 0) {
+      return res.status(400).json({ message: "serialNumbers debe ser un array no vacío" });
+    }
+
+    const result = await productsService.addItems(id, serialNumbers, note);
+
+    res.json(result);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ message: err.message });
+    }
+    if (err.code === "P2002") {
+      return res.status(409).json({ message: "Uno o más números de serie ya existen" });
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   list,
   getOne,
@@ -194,4 +223,5 @@ module.exports = {
   update,
   softDelete,
   adjustStock,
+  addItems,
 };

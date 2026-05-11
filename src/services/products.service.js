@@ -31,6 +31,7 @@ async function list(skip, limit, categoryId, name, isActive) {
       include: {
         category: { select: { id: true, name: true } },
         images: { orderBy: { order: "asc" } },
+        _count: { select: { items: { where: { status: "DISPONIBLE" } } } },
       },
     }),
   ]);
@@ -44,6 +45,10 @@ async function getOne(id) {
     include: {
       category: true,
       images: { orderBy: { order: "asc" } },
+      items: {
+        where: { status: "DISPONIBLE" },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 }
@@ -91,6 +96,14 @@ async function adjustStock(id, delta, note) {
       throw e;
     }
 
+    if (product.isSerialized) {
+      const e = new Error(
+        "No se puede ajustar el stock manualmente en productos serializados. Use agregar/quitar items."
+      );
+      e.statusCode = 400;
+      throw e;
+    }
+
     const nextStock = product.stockCurrent + delta;
     if (nextStock < 0) {
       const e = new Error("El ajuste dejaría el stock negativo");
@@ -118,6 +131,52 @@ async function adjustStock(id, delta, note) {
   });
 }
 
+async function addItems(productId, serialNumbers, note) {
+  return await prisma.$transaction(async (tx) => {
+    const product = await tx.product.findUnique({ where: { id: productId } });
+    if (!product) {
+      const e = new Error("Producto no encontrado");
+      e.statusCode = 404;
+      throw e;
+    }
+
+    if (!product.isSerialized) {
+      const e = new Error("Este producto no es serializado");
+      e.statusCode = 400;
+      throw e;
+    }
+
+    // Crear los items individuales
+    await tx.productItem.createMany({
+      data: serialNumbers.map((sn) => ({
+        serialNumber: sn,
+        productId,
+        status: "DISPONIBLE",
+      })),
+      skipDuplicates: false, // Queremos que falle si hay duplicados
+    });
+
+    // Actualizar el stock total
+    const updated = await tx.product.update({
+      where: { id: productId },
+      data: { stockCurrent: { increment: serialNumbers.length } },
+      include: { category: true, items: true },
+    });
+
+    // Registrar el movimiento
+    await tx.stockMovement.create({
+      data: {
+        productId,
+        type: "ENTRADA",
+        quantity: serialNumbers.length,
+        note: note || `Ingreso de ${serialNumbers.length} unidades serializadas`,
+      },
+    });
+
+    return updated;
+  });
+}
+
 module.exports = {
   list,
   getOne,
@@ -125,4 +184,5 @@ module.exports = {
   update,
   softDelete,
   adjustStock,
+  addItems,
 };
