@@ -26,6 +26,50 @@ model User {
   auditLogs    AuditLog[]
 }
 
+model Company {
+
+  id               Int      @id @default(autoincrement())
+
+  ruc              String   @unique
+
+  razonSocial      String
+
+  nombreComercial  String?
+
+  direccion        String
+
+  telefono         String?
+
+  email            String?
+
+  personaId        String
+
+  personaToken     String
+
+  isActive         Boolean  @default(true)
+
+  createdAt        DateTime @default(now())
+
+  updatedAt        DateTime @updatedAt
+}
+
+model DocumentSeries {
+
+  id                 Int               @id @default(autoincrement())
+
+  tipoComprobante    TipoComprobante
+
+  serie              String            @unique
+
+  correlativoActual  Int               @default(0)
+
+  isActive           Boolean           @default(true)
+
+  createdAt          DateTime          @default(now())
+
+  updatedAt          DateTime          @updatedAt
+}
+
 enum TipoDocumento {
   DNI
   RUC
@@ -34,9 +78,29 @@ enum TipoDocumento {
   SIN_DOC
 }
 
+enum TipoComprobante {
+  BOLETA
+  FACTURA
+  NOTA_CREDITO
+}
+
+enum SunatStatus {
+  PENDIENTE
+  ENVIADO
+  ACEPTADO
+  RECHAZADO
+  ERROR
+}
+
+enum CurrencyCode {
+  PEN
+  USD
+}
+
 model Customer {
   id            Int           @id @default(autoincrement())
   nombre        String
+  razonSocial   String?
   tipoDocumento TipoDocumento @default(SIN_DOC)
   nroDocumento  String?
   email         String?
@@ -147,19 +211,44 @@ enum SaleStatus {
   PENDIENTE_PAGO
 }
 
+model ElectronicDocument {
+  id               Int          @id @default(autoincrement())
+  saleId           Int          @unique
+  sale             Sale         @relation(fields: [saleId], references: [id])
+  fileName         String       @unique
+  payloadJson      Json
+  apiResponse      Json?
+  hash             String?
+  qrData           String?
+  cdrCode          String?
+  cdrDescription   String?
+  ticket           String?
+  sunatStatus      SunatStatus  @default(PENDIENTE)
+  sentAt           DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
 model Sale {
   id         Int        @id @default(autoincrement())
   userId     Int
   customerId Int?
   subtotal   Decimal    @db.Decimal(10, 2) @default(0)
   descuento  Decimal    @db.Decimal(10, 2) @default(0)
+  igv        Decimal    @db.Decimal(10, 2) @default(0)
   total      Decimal    @db.Decimal(10, 2) @default(0)
+  currency   CurrencyCode @default(PEN)
+  tipoComprobante TipoComprobante?
+  serie      String?
+  correlativo Int?
+  fechaEmision DateTime?
   status     SaleStatus @default(COMPLETADA)
   createdAt  DateTime   @default(now())
-  user       User          @relation(fields: [userId], references: [id])
-  customer   Customer?     @relation(fields: [customerId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+  customer   Customer?  @relation(fields: [customerId], references: [id])
   items      SaleItem[]
   payments   SalePayment[]
+  electronicDocument ElectronicDocument?
 }
 
 model SaleItem {
@@ -168,12 +257,14 @@ model SaleItem {
   productId      Int
   nombreSnapshot String
   precioSnapshot Decimal @db.Decimal(10, 2)
+  valorUnitario  Decimal @db.Decimal(10,2)
   quantity       Int
   descuento      Decimal @db.Decimal(10, 2) @default(0)
+  igv            Decimal @db.Decimal(10,2) @default(0)
   subtotal       Decimal @db.Decimal(10, 2)
+  total          Decimal @db.Decimal(10,2)
   sale           Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product        Product @relation(fields: [productId], references: [id])
-
   productItem    ProductItem?
 }
 
