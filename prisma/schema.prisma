@@ -238,7 +238,7 @@ model Sale {
   igv        Decimal    @db.Decimal(10, 2) @default(0)
   total      Decimal    @db.Decimal(10, 2) @default(0)
   currency   CurrencyCode @default(PEN)
-  tipoComprobante TipoComprobante?
+  tipoComprobante TipoComprobante
   serie      String?
   correlativo Int?
   fechaEmision DateTime?
@@ -249,6 +249,7 @@ model Sale {
   items      SaleItem[]
   payments   SalePayment[]
   electronicDocument ElectronicDocument?
+  @@unique([serie, correlativo]) 
 }
 
 model SaleItem {
