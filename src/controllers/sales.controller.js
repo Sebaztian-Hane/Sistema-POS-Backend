@@ -69,8 +69,31 @@ async function getOne(req, res, next) {
 async function create(req, res, next) {
   try {
     const body = req.body ?? {};
-    const { customerId, items, payments, descuento: extraDescuentoRaw, status } =
-      body;
+    
+    // PRIORIDAD MÁXIMA: tipoComprobante es OBLIGATORIO ahora
+    const { 
+      customerId, 
+      tipoComprobante,  // NUEVO: 'FACTURA' o 'BOLETA'
+      items, 
+      payments, 
+      descuento: extraDescuentoRaw, 
+      status 
+    } = body;
+
+    // Validación CRÍTICA para SUNAT
+    if (!tipoComprobante) {
+      return res.status(400).json({ 
+        message: "tipoComprobante es obligatorio. Valores permitidos: 'FACTURA' o 'BOLETA'" 
+      });
+    }
+
+    // Validar que tipoComprobante sea válido
+    const tiposPermitidos = ['FACTURA', 'BOLETA'];
+    if (!tiposPermitidos.includes(tipoComprobante)) {
+      return res.status(400).json({ 
+        message: "tipoComprobante debe ser 'FACTURA' o 'BOLETA'" 
+      });
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "items debe ser un array no vacío" });
@@ -90,16 +113,32 @@ async function create(req, res, next) {
       return res.status(400).json({ message: "customerId inválido" });
     }
 
+    // CRÍTICO: Enviar tipoComprobante al servicio
     const sale = await salesService.create({
       userId,
       customerId: customerIdParsed,
+      tipoComprobante,  // ENVIAR OBLIGATORIAMENTE
       items,
       payments,
       extraDescuentoRaw,
       status,
     });
 
-    res.status(201).json(sale);
+    // Respuesta mejorada con información tributaria
+    res.status(201).json({
+      ok: true,
+      message: "Venta creada exitosamente",
+      data: {
+        id: sale.id,
+        documento: `${sale.serie}-${String(sale.correlativo).padStart(8, '0')}`,
+        tipoComprobante: sale.tipoComprobante,
+        serie: sale.serie,
+        correlativo: sale.correlativo,
+        fechaEmision: sale.fechaEmision,
+        total: sale.total,
+        ...sale
+      }
+    });
   } catch (err) {
     if (err.statusCode) {
       return res.status(err.statusCode).json({ message: err.message });
@@ -117,7 +156,11 @@ async function anular(req, res, next) {
 
     const result = await salesService.anular(id);
 
-    res.json(result);
+    res.json({
+      ok: true,
+      message: "Venta anulada exitosamente",
+      data: result
+    });
   } catch (err) {
     if (err.statusCode) {
       return res.status(err.statusCode).json({ message: err.message });
