@@ -1,5 +1,7 @@
 const { Prisma } = require("@prisma/client");
 const prisma = require("../libs/prisma");
+const { calcularTotalesVenta } = require('../utils/calcularTotalesVenta');
+const { generarSerieCorrelativo } = require('../utils/generarSerieCorrelativo');
 
 function toDecimal(value) {
   const n = Number(value);
@@ -12,6 +14,11 @@ function toDecimal(value) {
 function decNum(d) {
   return Number(d);
 }
+
+// Helper para redondeo consistente
+const roundTo2 = (value) => {
+  return Number(Number(value).toFixed(2));
+};
 
 async function list(skip, limit, userId, from, to, customerId) {
   const where = {};
@@ -70,7 +77,15 @@ async function getOne(id) {
   });
 }
 
-async function create({ userId, customerId, items, payments, extraDescuentoRaw, status }) {
+async function create({ 
+  userId, 
+  customerId, 
+  items, 
+  payments, 
+  extraDescuentoRaw, 
+  status,
+  tipoComprobante = 'BOLETA' // Por defecto BOLETA, puede ser 'FACTURA'
+}) {
   const extraDescuento = toDecimal(extraDescuentoRaw ?? 0);
   if (decNum(extraDescuento) < 0) {
     const e = new Error("descuento no puede ser negativo");
@@ -83,6 +98,7 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
       ? status
       : "COMPLETADA";
 
+  // Preparar datos para validación
   const lineInputs = items.map((it) => ({
     productId: parseInt(it.productId, 10),
     quantity: parseInt(it.quantity, 10),
@@ -133,6 +149,7 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
   }
 
   return await prisma.$transaction(async (tx) => {
+    // Validar cliente
     if (customerId !== null) {
       const c = await tx.customer.findFirst({
         where: { id: customerId, isActive: true },
@@ -142,6 +159,7 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
       }
     }
 
+    // Obtener productos
     const productIds = [...new Set(lineInputs.map((l) => l.productId))];
     const products = await tx.product.findMany({
       where: { id: { in: productIds }, isActive: true },
@@ -152,78 +170,7 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
       throw Object.assign(new Error("Uno o más productos no existen o están inactivos"), { statusCode: 400 });
     }
 
-    let subtotalGross = new Prisma.Decimal(0);
-    let sumLineDesc = new Prisma.Decimal(0);
-    const saleItemsData = [];
-
-    for (const line of items) {
-      const productId = parseInt(line.productId, 10);
-      const p = byId.get(productId);
-      const price = p.price;
-      const quantity = parseInt(line.quantity, 10);
-      const descuentoTotal = toDecimal(line.descuento ?? 0);
-
-      if (p.isSerialized) {
-        // Validación para productos serializados
-        const serials = line.serialNumbers || [];
-        if (serials.length !== quantity) {
-          throw Object.assign(
-            new Error(`Debe proporcionar exactamente ${quantity} números de serie para "${p.name}"`),
-            { statusCode: 400 }
-          );
-        }
-
-        // Para productos serializados, creamos un SaleItem por cada unidad (por la relación 1-1 del esquema)
-        const descPerUnit = descuentoTotal.div(quantity);
-        for (const sn of serials) {
-          const itemSubtotal = price.sub(descPerUnit);
-          subtotalGross = subtotalGross.add(price);
-          sumLineDesc = sumLineDesc.add(descPerUnit);
-
-          saleItemsData.push({
-            productId,
-            nombreSnapshot: p.name,
-            precioSnapshot: price,
-            quantity: 1,
-            descuento: descPerUnit,
-            subtotal: itemSubtotal,
-            serialNumber: sn, // Campo temporal para procesar después
-          });
-        }
-      } else {
-        // Producto normal
-        const lineGross = price.mul(quantity);
-        const lineSubtotal = lineGross.sub(descuentoTotal);
-        if (decNum(lineSubtotal) < 0) {
-          throw Object.assign(new Error(`El descuento del ítem "${p.name}" supera el subtotal`), { statusCode: 400 });
-        }
-
-        subtotalGross = subtotalGross.add(lineGross);
-        sumLineDesc = sumLineDesc.add(descuentoTotal);
-
-        saleItemsData.push({
-          productId,
-          nombreSnapshot: p.name,
-          precioSnapshot: price,
-          quantity,
-          descuento: descuentoTotal,
-          subtotal: lineSubtotal,
-        });
-      }
-    }
-
-    const total = subtotalGross.sub(sumLineDesc).sub(extraDescuento);
-    if (decNum(total) < 0) {
-      throw Object.assign(new Error("El total de la venta no puede ser negativo"), { statusCode: 400 });
-    }
-
-    // Validar pagos
-    const paySum = paymentInputs.reduce((acc, p) => acc.add(p.amount), new Prisma.Decimal(0));
-    if (Math.abs(decNum(paySum) - decNum(total)) > 0.02) {
-      throw Object.assign(new Error("La suma de pagos no coincide con el total"), { statusCode: 400 });
-    }
-
-    // Validar stock y disponibilidad de seriales
+    // Validar stock y disponibilidad de seriales antes de calcular
     if (saleStatus === "COMPLETADA" || saleStatus === "PENDIENTE_PAGO") {
       for (const line of items) {
         const p = byId.get(parseInt(line.productId, 10));
@@ -232,9 +179,17 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
         }
         
         if (p.isSerialized) {
-          for (const sn of line.serialNumbers) {
-            const item = await tx.productItem.findUnique({ where: { serialNumber: sn } });
-            if (!item || item.productId !== p.id || item.status !== "DISPONIBLE") {
+          const serialNumbers = line.serialNumbers || [];
+          if (serialNumbers.length !== parseInt(line.quantity, 10)) {
+            throw Object.assign(
+              new Error(`Debe proporcionar exactamente ${line.quantity} números de serie para "${p.name}"`),
+              { statusCode: 400 }
+            );
+          }
+          
+          for (const sn of serialNumbers) {
+            const productItem = await tx.productItem.findUnique({ where: { serialNumber: sn } });
+            if (!productItem || productItem.productId !== p.id || productItem.status !== "DISPONIBLE") {
               throw Object.assign(new Error(`El serial "${sn}" no está disponible`), { statusCode: 400 });
             }
           }
@@ -242,14 +197,82 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
       }
     }
 
-    // Crear la venta
+    // PASO 1: Calcular totales
+    const descuentoExtraPorItem = Number(
+      (
+        Number(extraDescuentoRaw || 0) / items.length
+      ).toFixed(2)
+    );
+
+    const itemsParaCalculo = items.map((item) => {
+      const p = byId.get(parseInt(item.productId, 10));
+      const descuentoItem = Number(item.descuento ?? 0);
+      const descuentoTotalItem = roundTo2(descuentoItem + descuentoExtraPorItem);
+      
+      return {
+        productId: parseInt(item.productId, 10),
+        nombreSnapshot: p.name,
+        precio: Number(p.price),
+        quantity: parseInt(item.quantity, 10),
+        descuento: descuentoTotalItem,
+      };
+    });
+
+    const totalesCalculados = calcularTotalesVenta(itemsParaCalculo);
+
+    // Validar y ajustar descuento extra
+    const sumaDescuentosItems = items.reduce((acc, item) => acc + Number(item.descuento || 0), 0);
+    const extraDescuentoAplicado = roundTo2(totalesCalculados.descuento - sumaDescuentosItems);
+    const extraDescuentoEsperado = roundTo2(Number(extraDescuentoRaw || 0));
+    
+    let totalFinal = totalesCalculados.total;
+    if (Math.abs(extraDescuentoAplicado - extraDescuentoEsperado) > 0.02) {
+      console.warn(`Diferencia en descuento extra: esperado ${extraDescuentoEsperado}, aplicado ${extraDescuentoAplicado}`);
+      
+      const diferencia = roundTo2(extraDescuentoEsperado - extraDescuentoAplicado);
+      if (Math.abs(diferencia) <= 0.02) {
+        totalFinal = roundTo2(totalesCalculados.total + diferencia);
+      }
+    }
+
+    // Validar pagos
+    const paySum = paymentInputs.reduce((acc, p) => acc.add(p.amount), new Prisma.Decimal(0));
+    const diferenciaPagos = Math.abs(decNum(paySum) - totalFinal);
+    
+    if (diferenciaPagos > 0.02) {
+      throw Object.assign(
+        new Error(`La suma de pagos (${decNum(paySum)}) no coincide con el total (${totalFinal}). Diferencia: ${diferenciaPagos}`), 
+        { statusCode: 400 }
+      );
+    }
+    
+    let totalParaGuardar = totalFinal;
+    if (diferenciaPagos > 0 && diferenciaPagos <= 0.02) {
+      totalParaGuardar = decNum(paySum);
+    }
+
+    // PASO 2: Generar serie y correlativo
+    const { serie, correlativo } = await generarSerieCorrelativo({
+      tx,
+      tipoComprobante
+    });
+
+    // PASO 3: Crear la venta con los nuevos campos
+    const fechaEmision = new Date();
+    
     const created = await tx.sale.create({
       data: {
         userId,
         customerId,
-        subtotal: subtotalGross,
-        descuento: sumLineDesc.add(extraDescuento),
-        total,
+        tipoComprobante,
+        serie,
+        correlativo,
+        fechaEmision,
+        subtotal: toDecimal(totalesCalculados.subtotal),
+        igv: toDecimal(totalesCalculados.igv),
+        total: toDecimal(totalParaGuardar),
+        descuento: toDecimal(totalesCalculados.descuento),
+        currency: 'PEN',
         status: saleStatus,
         payments: {
           create: paymentInputs.map((p) => ({
@@ -257,52 +280,79 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
             amount: p.amount,
           })),
         },
-        items: {
-          create: saleItemsData.map(({ serialNumber, ...rest }) => rest),
-        },
       },
-      include: { items: true },
     });
 
+    // Crear los SaleItems
+    const saleItemsToCreate = totalesCalculados.itemsCalculados.map((itemCalculado) => {
+      const originalItem = items.find(i => parseInt(i.productId, 10) === itemCalculado.productId);
+      const product = byId.get(itemCalculado.productId);
+      
+      const dbData = {
+        saleId: created.id,
+        productId: itemCalculado.productId,
+        nombreSnapshot: itemCalculado.nombreSnapshot,
+        precioSnapshot: toDecimal(itemCalculado.precioSnapshot),
+        valorUnitario: toDecimal(itemCalculado.valorUnitario),
+        quantity: itemCalculado.quantity,
+        descuento: toDecimal(itemCalculado.descuento),
+        subtotal: toDecimal(itemCalculado.subtotal),
+        igv: toDecimal(itemCalculado.igv),
+        total: toDecimal(itemCalculado.total),
+      };
+      
+      const metadata = {
+        serialNumbers: product?.isSerialized && originalItem?.serialNumbers 
+          ? originalItem.serialNumbers 
+          : [],
+        isSerialized: product?.isSerialized || false,
+        productName: product?.name
+      };
+      
+      return { dbData, metadata };
+    });
+
+    const createdItems = [];
+    for (const itemData of saleItemsToCreate) {
+      const saleItem = await tx.saleItem.create({
+        data: itemData.dbData,
+      });
+      
+      createdItems.push({
+        ...saleItem,
+        metadata: itemData.metadata
+      });
+    }
+
+    // Procesar stock y seriales
     if (saleStatus === "COMPLETADA") {
-      // Procesar cada SaleItem creado
-      for (const saleItem of created.items) {
-        // Encontrar el serialNumber original para este SaleItem si era serializado
-        const originalData = saleItemsData.find(
-          (d) =>
-            d.productId === saleItem.productId &&
-            d.subtotal.equals(saleItem.subtotal) &&
-            d.serialNumber // Buscamos uno que tenga serialNumber
-        );
-
-        if (originalData && originalData.serialNumber) {
-          // Actualizar ProductItem
-          await tx.productItem.update({
-            where: { serialNumber: originalData.serialNumber },
-            data: { status: "VENDIDO", saleItemId: saleItem.id },
-          });
-          // Eliminar de saleItemsData para no re-usarlo si hay varios iguales
-          const idx = saleItemsData.indexOf(originalData);
-          saleItemsData.splice(idx, 1);
+      for (const saleItemWithMeta of createdItems) {
+        const product = byId.get(saleItemWithMeta.productId);
+        
+        if (saleItemWithMeta.metadata.isSerialized && saleItemWithMeta.metadata.serialNumbers.length > 0) {
+          for (const sn of saleItemWithMeta.metadata.serialNumbers) {
+            await tx.productItem.update({
+              where: { serialNumber: sn },
+              data: { status: "VENDIDO", saleItemId: saleItemWithMeta.id },
+            });
+          }
         }
-
-        // Actualizar Stock y Movimiento
+        
         await tx.product.update({
-          where: { id: saleItem.productId },
-          data: { stockCurrent: { decrement: saleItem.quantity } },
+          where: { id: saleItemWithMeta.productId },
+          data: { stockCurrent: { decrement: saleItemWithMeta.quantity } },
         });
-
+        
         await tx.stockMovement.create({
           data: {
-            productId: saleItem.productId,
+            productId: saleItemWithMeta.productId,
             type: "VENTA",
-            quantity: saleItem.quantity,
+            quantity: saleItemWithMeta.quantity,
             referenceId: created.id,
           },
         });
-
-        // Notificación de Stock Mínimo
-        const fresh = await tx.product.findUnique({ where: { id: saleItem.productId } });
+        
+        const fresh = await tx.product.findUnique({ where: { id: saleItemWithMeta.productId } });
         if (fresh && fresh.stockCurrent < fresh.stockMin) {
           await tx.notification.create({
             data: {
@@ -316,7 +366,28 @@ async function create({ userId, customerId, items, payments, extraDescuentoRaw, 
       }
     }
 
-    return created;
+    // Retornar la venta completa
+    const finalSale = await tx.sale.findUnique({
+      where: { id: created.id },
+      include: {
+        customer: true,
+        items: true,
+        payments: {
+          include: {
+            paymentMethod: true
+          }
+        },
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return finalSale;
   });
 }
 
@@ -333,13 +404,11 @@ async function anular(id) {
 
     if (sale.status === "COMPLETADA") {
       for (const item of sale.items) {
-        // Devolver stock
         await tx.product.update({
           where: { id: item.productId },
           data: { stockCurrent: { increment: item.quantity } },
         });
 
-        // Si tenía un item serializado, liberarlo
         if (item.productItem) {
           await tx.productItem.update({
             where: { id: item.productItem.id },
