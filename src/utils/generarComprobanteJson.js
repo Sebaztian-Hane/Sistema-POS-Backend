@@ -1,18 +1,18 @@
+const { NumeroALetras } = require('numero-a-letras');
+
 const generarComprobanteJson = ({ company, sale }) => {
 
   const fecha = new Date(sale.fechaEmision || sale.createdAt);
 
   const issueDate = fecha.toISOString().split('T')[0];
 
-  const issueTime = fecha.toTimeString().split(' ')[0];
+  const issueTime = fecha.toLocaleTimeString('en-GB', { hour12: false });
 
   const mapaTipoDocumento = {
 
     FACTURA: '01',
 
-    BOLETA: '03',
-
-    NOTA_CREDITO: '07'
+    BOLETA: '03'
   };
 
   const tipoDocSunat = mapaTipoDocumento[sale.tipoComprobante];
@@ -27,7 +27,7 @@ const generarComprobanteJson = ({ company, sale }) => {
     `${company.ruc}-${tipoDocSunat}-${sale.serie}-${correlativoFormateado}`;
 
   const clienteDocumento =
-    sale.customer?.nroDocumento || '00000000';
+    sale.customer?.nroDocumento || '-';
 
   const clienteNombre =
     sale.customer?.razonSocial ||
@@ -51,14 +51,45 @@ const generarComprobanteJson = ({ company, sale }) => {
         return '7';
 
       default:
-        return '1';
+        return '-';
     }
   })();
 
-  const montoLetras =
-    `${Number(sale.total).toFixed(2)} SOLES`;
+
+  const obtenerMontoLetras = (monto) => {
+    try {
+      // Convertir a número y separar parte entera y decimal
+      const numero = Number(monto);
+      const parteEntera = Math.floor(numero);
+      const parteDecimal = Math.round((numero - parteEntera) * 100);
+      
+      // Convertir la parte entera a letras
+      const letrasEntero = NumeroALetras(parteEntera);
+      
+      // Formato SUNAT: "TRES MIL QUINIENTOS Y 00/100 SOLES"
+      const decimalFormateado = parteDecimal.toString().padStart(2, '0');
+      
+      return `${letrasEntero} Y ${decimalFormateado}/100 SOLES`;
+    } catch (error) {
+      console.error('Error al convertir monto a letras:', error);
+      // Fallback seguro
+      return `${Number(monto).toFixed(2)} SOLES`;
+    }
+  };
+
+  const montoLetras = obtenerMontoLetras(sale.total);
+  
+  const money = (value) => Number(Number(value).toFixed(2));
 
   const invoiceLines = sale.items.map((item, index) => {
+
+    // Calcular valor unitario sin IGV (precioSnapshot ya incluye IGV)
+    const valorUnitarioSinIgv = Number(item.valorUnitario);
+    const precioUnitarioConIgv = Number(item.precioSnapshot);
+    const cantidad = item.quantity;
+    const subtotalItem = money(item.subtotal)
+    const igvItem = Number(item.igv);
+    const totalItem = Number(item.total);
 
     return {
 
@@ -70,14 +101,14 @@ const generarComprobanteJson = ({ company, sale }) => {
         "_attributes": {
           "unitCode": "NIU"
         },
-        "_text": item.quantity
+        "_text": cantidad
       },
 
       "cbc:LineExtensionAmount": {
         "_attributes": {
           "currencyID": sale.currency
         },
-        "_text": Number(item.subtotal)
+        "_text": subtotalItem
       },
 
       "cac:PricingReference": {
@@ -88,11 +119,11 @@ const generarComprobanteJson = ({ company, sale }) => {
             "_attributes": {
               "currencyID": sale.currency
             },
-            "_text": Number(item.precioSnapshot)
+            "_text": precioUnitarioConIgv
           },
 
           "cbc:PriceTypeCode": {
-            "_text": "01"
+            "_text": "01"  // 01 = Precio unitario (incluye IGV)
           }
         }
       },
@@ -105,7 +136,7 @@ const generarComprobanteJson = ({ company, sale }) => {
             "currencyID": sale.currency
           },
 
-          "_text": Number(item.igv)
+          "_text": igvItem
         },
 
         "cac:TaxSubtotal": [
@@ -118,7 +149,7 @@ const generarComprobanteJson = ({ company, sale }) => {
                 "currencyID": sale.currency
               },
 
-              "_text": Number(item.subtotal)
+              "_text": subtotalItem
             },
 
             "cbc:TaxAmount": {
@@ -127,7 +158,7 @@ const generarComprobanteJson = ({ company, sale }) => {
                 "currencyID": sale.currency
               },
 
-              "_text": Number(item.igv)
+              "_text": igvItem
             },
 
             "cac:TaxCategory": {
@@ -137,13 +168,13 @@ const generarComprobanteJson = ({ company, sale }) => {
               },
 
               "cbc:TaxExemptionReasonCode": {
-                "_text": "10"
+                "_text": "10"  // 10 = Gravado
               },
 
               "cac:TaxScheme": {
 
                 "cbc:ID": {
-                  "_text": "1000"
+                  "_text": "1000"  // 1000 = IGV
                 },
 
                 "cbc:Name": {
@@ -151,7 +182,7 @@ const generarComprobanteJson = ({ company, sale }) => {
                 },
 
                 "cbc:TaxTypeCode": {
-                  "_text": "VAT"
+                  "_text": "VAT"  // VAT = Impuesto al Valor Agregado
                 }
               }
             }
@@ -168,7 +199,7 @@ const generarComprobanteJson = ({ company, sale }) => {
         "cac:SellersItemIdentification": {
 
           "cbc:ID": {
-            "_text": item.productId
+            "_text": String(item.productId)
           }
         }
       },
@@ -181,7 +212,7 @@ const generarComprobanteJson = ({ company, sale }) => {
             "currencyID": sale.currency
           },
 
-          "_text": Number(item.valorUnitario)
+          "_text": valorUnitarioSinIgv
         }
       }
     };
@@ -229,6 +260,7 @@ const generarComprobanteJson = ({ company, sale }) => {
         "_text": tipoDocSunat
       },
 
+      // ✅ NOTA con monto en letras (formato SUNAT)
       "cbc:Note": [
 
         {
@@ -236,7 +268,7 @@ const generarComprobanteJson = ({ company, sale }) => {
           "_text": montoLetras,
 
           "_attributes": {
-            "languageLocaleID": "1000"
+            "languageLocaleID": "1000"  // 1000 = Español
           }
         }
       ],
@@ -254,7 +286,7 @@ const generarComprobanteJson = ({ company, sale }) => {
             "cbc:ID": {
 
               "_attributes": {
-                "schemeID": "6"
+                "schemeID": "6"  // 6 = RUC
               },
 
               "_text": company.ruc
@@ -281,7 +313,7 @@ const generarComprobanteJson = ({ company, sale }) => {
             "cac:RegistrationAddress": {
 
               "cbc:AddressTypeCode": {
-                "_text": "0000"
+                "_text": "0000"  // 0000 = Dirección fiscal
               },
 
               "cac:AddressLine": {
@@ -317,7 +349,18 @@ const generarComprobanteJson = ({ company, sale }) => {
 
               "_text": clienteNombre
             }
-          }
+          },
+
+          // Dirección del cliente (opcional)
+          ...(sale.customer?.direccion && {
+            "cac:PhysicalLocation": {
+              "cac:Address": {
+                "cac:AddressLine": {
+                  "cbc:Line": sale.customer.direccion
+                }
+              }
+            }
+          })
         }
       },
 

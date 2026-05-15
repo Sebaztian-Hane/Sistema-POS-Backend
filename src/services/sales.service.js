@@ -3,6 +3,9 @@ const prisma = require("../libs/prisma");
 const { calcularTotalesVenta } = require('../utils/calcularTotalesVenta');
 const { generarSerieCorrelativo } = require('../utils/generarSerieCorrelativo');
 const { buscarOcrearCliente } = require('./customerLookup.service');
+const { generarComprobanteJson } = require('../utils/generarComprobanteJson');
+const { crearDocumentoElectronico, actualizarEstadoDocumento } = require('./electronicDocument.service');
+const { enviarComprobanteApisunat } = require('./apisunat.service');
 
 function toDecimal(value) {
   const n = Number(value);
@@ -74,6 +77,7 @@ async function getOne(id) {
       customer: true,
       items: { include: { product: { select: { id: true, upc: true } } } },
       payments: { include: { paymentMethod: true } },
+      electronicDocument: true,  // Incluir documento electrónico
     },
   });
 }
@@ -112,7 +116,6 @@ async function create({
   // PASO 2: VALIDACIÓN CRÍTICA PARA FACTURA
   // ============================================================
   if (tipoComprobante === 'FACTURA') {
-    // Factura debe tener cliente
     if (!customer) {
       throw Object.assign(
         new Error("Factura requiere cliente con RUC"),
@@ -120,7 +123,6 @@ async function create({
       );
     }
     
-    // Factura requiere cliente tipo RUC
     if (customer.tipoDocumento !== 'RUC') {
       throw Object.assign(
         new Error(`Factura requiere RUC. El cliente tiene documento tipo: ${customer.tipoDocumento}`),
@@ -128,7 +130,6 @@ async function create({
       );
     }
     
-    // Validar que el RUC tenga 11 dígitos
     if (!customer.nroDocumento || customer.nroDocumento.length !== 11) {
       throw Object.assign(
         new Error(`RUC inválido: ${customer.nroDocumento}. Debe tener 11 dígitos`),
@@ -189,6 +190,19 @@ async function create({
     }
   }
 
+  // ============================================================
+  // OBTENER DATOS DE LA EMPRESA (FUERA del transaction)
+  // ============================================================
+  const company = await prisma.company.findFirst({
+    where: { isActive: true }
+  });
+  
+  if (!company) {
+    throw Object.assign(
+      new Error("No existe configuración de empresa activa. Contacte al administrador."),
+      { statusCode: 500 }
+    );
+  }
   // ============================================================
   // TRANSACTION
   // ============================================================
@@ -303,7 +317,7 @@ async function create({
     const created = await tx.sale.create({
       data: {
         userId,
-        customerId: customer?.id || null,  // ✅ customerId desde el cliente resuelto
+        customerId: customer?.id || null,
         tipoComprobante,
         serie,
         correlativo,
@@ -411,6 +425,71 @@ async function create({
     }
 
     // ============================================================
+    // PASO 8: GENERAR Y ENVIAR COMPROBANTE ELECTRÓNICO
+    // SOLO si la venta está COMPLETADA
+    // ============================================================
+    let electronicDocumentResult = null;
+    
+    if (saleStatus === "COMPLETADA") {
+      try {
+        // Obtener la venta completa con sus relaciones
+        const saleCompleta = await tx.sale.findUnique({
+          where: { id: created.id },
+          include: {
+            customer: true,
+            items: true,
+          }
+        });
+        
+        // 8.1: Generar JSON del comprobante
+        const comprobanteJson = generarComprobanteJson({
+          company,
+          sale: saleCompleta
+        });
+        
+        // 8.2: Crear registro del documento electrónico
+        await crearDocumentoElectronico({
+          saleId: created.id,
+          tipoComprobante,
+          serie,
+          correlativo,
+          payloadJson: comprobanteJson
+        });
+        
+        // 8.3: Enviar a API SUNAT
+        const respuestaSunat = await enviarComprobanteApisunat(comprobanteJson);
+        
+        // 8.4: Actualizar estado del documento
+        electronicDocumentResult = await actualizarEstadoDocumento({
+          saleId: created.id,
+          estado: respuestaSunat.success ? 'ACEPTADO' : 'RECHAZADO',
+          respuestaSunat,
+          observaciones: respuestaSunat.message || respuestaSunat.cdrDescription,
+          codigoHash: respuestaSunat.hash,
+          codigoCdr: respuestaSunat.cdrCode
+        });
+        
+        console.log(`Comprobante ${serie}-${correlativo} enviado a SUNAT. Estado: ${respuestaSunat.success ? 'ACEPTADO' : 'RECHAZADO'}`);
+        
+      } catch (error) {
+        console.error('Error al enviar comprobante a SUNAT:', error);
+        
+        // Registrar el error en el documento electrónico
+        await actualizarEstadoDocumento({
+          saleId: created.id,
+          estado: 'ERROR',
+          respuestaSunat: null,
+          observaciones: error.message,
+          codigoHash: null,
+          codigoCdr: null
+        });
+        
+        // No lanzamos error para no afectar la creación de la venta
+        // pero registramos el problema
+      }
+    }
+
+    // ============================================================
     // RETORNAR LA VENTA COMPLETA
     // ============================================================
     const finalSale = await tx.sale.findUnique({
@@ -429,7 +508,8 @@ async function create({
             username: true,
             email: true
           }
-        }
+        },
+        electronicDocument: true  // Incluir info del documento electrónico
       }
     });
 
@@ -441,7 +521,10 @@ async function anular(id) {
   return await prisma.$transaction(async (tx) => {
     const sale = await tx.sale.findUnique({
       where: { id },
-      include: { items: { include: { productItem: true } } },
+      include: { 
+        items: { include: { productItem: true } },
+        electronicDocument: true
+      },
     });
 
     if (!sale || sale.status === "ANULADA") {
@@ -471,6 +554,12 @@ async function anular(id) {
             note: "Anulación de venta",
           },
         });
+      }
+      
+      // TODO: Enviar anulación a SUNAT si el comprobante fue aceptado
+      if (sale.electronicDocument && sale.electronicDocument.sunatStatus === 'ACEPTADO') {
+        // Aquí iría la lógica para enviar la anulación a SUNAT
+        console.log(`Pendiente: Enviar anulación del comprobante ${sale.serie}-${sale.correlativo} a SUNAT`);
       }
     }
 
