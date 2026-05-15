@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const prisma = require("../libs/prisma");
 const { calcularTotalesVenta } = require('../utils/calcularTotalesVenta');
 const { generarSerieCorrelativo } = require('../utils/generarSerieCorrelativo');
+const { buscarOcrearCliente } = require('./customerLookup.service');
 
 function toDecimal(value) {
   const n = Number(value);
@@ -50,7 +51,7 @@ async function list(skip, limit, userId, from, to, customerId) {
       orderBy: { createdAt: "desc" },
       include: {
         user: { select: { id: true, username: true, email: true } },
-        customer: { select: { id: true, nombre: true } },
+        customer: { select: { id: true, nombre: true, tipoDocumento: true, nroDocumento: true } },
         _count: { select: { items: true, payments: true } },
       },
     }),
@@ -79,12 +80,12 @@ async function getOne(id) {
 
 async function create({ 
   userId, 
-  customerId, 
+  documentoCliente,
   items, 
   payments, 
   extraDescuentoRaw, 
   status,
-  tipoComprobante = 'BOLETA' // Por defecto BOLETA, puede ser 'FACTURA'
+  tipoComprobante = 'BOLETA'
 }) {
   const extraDescuento = toDecimal(extraDescuentoRaw ?? 0);
   if (decNum(extraDescuento) < 0) {
@@ -98,7 +99,47 @@ async function create({
       ? status
       : "COMPLETADA";
 
-  // Preparar datos para validación
+  // ============================================================
+  // PASO 1: RESOLVER CLIENTE (FUERA del transaction)
+  // ============================================================
+  let customer = null;
+  
+  if (documentoCliente) {
+    customer = await buscarOcrearCliente(documentoCliente);
+  }
+
+  // ============================================================
+  // PASO 2: VALIDACIÓN CRÍTICA PARA FACTURA
+  // ============================================================
+  if (tipoComprobante === 'FACTURA') {
+    // Factura debe tener cliente
+    if (!customer) {
+      throw Object.assign(
+        new Error("Factura requiere cliente con RUC"),
+        { statusCode: 400 }
+      );
+    }
+    
+    // Factura requiere cliente tipo RUC
+    if (customer.tipoDocumento !== 'RUC') {
+      throw Object.assign(
+        new Error(`Factura requiere RUC. El cliente tiene documento tipo: ${customer.tipoDocumento}`),
+        { statusCode: 400 }
+      );
+    }
+    
+    // Validar que el RUC tenga 11 dígitos
+    if (!customer.nroDocumento || customer.nroDocumento.length !== 11) {
+      throw Object.assign(
+        new Error(`RUC inválido: ${customer.nroDocumento}. Debe tener 11 dígitos`),
+        { statusCode: 400 }
+      );
+    }
+  }
+
+  // ============================================================
+  // VALIDACIONES DE ITEMS Y PAGOS
+  // ============================================================
   const lineInputs = items.map((it) => ({
     productId: parseInt(it.productId, 10),
     quantity: parseInt(it.quantity, 10),
@@ -148,17 +189,10 @@ async function create({
     }
   }
 
+  // ============================================================
+  // TRANSACTION
+  // ============================================================
   return await prisma.$transaction(async (tx) => {
-    // Validar cliente
-    if (customerId !== null) {
-      const c = await tx.customer.findFirst({
-        where: { id: customerId, isActive: true },
-      });
-      if (!c) {
-        throw Object.assign(new Error("Cliente no encontrado o inactivo"), { statusCode: 404 });
-      }
-    }
-
     // Obtener productos
     const productIds = [...new Set(lineInputs.map((l) => l.productId))];
     const products = await tx.product.findMany({
@@ -170,7 +204,7 @@ async function create({
       throw Object.assign(new Error("Uno o más productos no existen o están inactivos"), { statusCode: 400 });
     }
 
-    // Validar stock y disponibilidad de seriales antes de calcular
+    // Validar stock y disponibilidad de seriales
     if (saleStatus === "COMPLETADA" || saleStatus === "PENDIENTE_PAGO") {
       for (const line of items) {
         const p = byId.get(parseInt(line.productId, 10));
@@ -197,7 +231,9 @@ async function create({
       }
     }
 
-    // PASO 1: Calcular totales
+    // ============================================================
+    // PASO 3: CALCULAR TOTALES
+    // ============================================================
     const descuentoExtraPorItem = Number(
       (
         Number(extraDescuentoRaw || 0) / items.length
@@ -251,19 +287,23 @@ async function create({
       totalParaGuardar = decNum(paySum);
     }
 
-    // PASO 2: Generar serie y correlativo
+    // ============================================================
+    // PASO 4: GENERAR SERIE Y CORRELATIVO
+    // ============================================================
     const { serie, correlativo } = await generarSerieCorrelativo({
       tx,
       tipoComprobante
     });
 
-    // PASO 3: Crear la venta con los nuevos campos
+    // ============================================================
+    // PASO 5: CREAR LA VENTA
+    // ============================================================
     const fechaEmision = new Date();
     
     const created = await tx.sale.create({
       data: {
         userId,
-        customerId,
+        customerId: customer?.id || null,  // ✅ customerId desde el cliente resuelto
         tipoComprobante,
         serie,
         correlativo,
@@ -283,7 +323,9 @@ async function create({
       },
     });
 
-    // Crear los SaleItems
+    // ============================================================
+    // PASO 6: CREAR LOS SALEITEMS
+    // ============================================================
     const saleItemsToCreate = totalesCalculados.itemsCalculados.map((itemCalculado) => {
       const originalItem = items.find(i => parseInt(i.productId, 10) === itemCalculado.productId);
       const product = byId.get(itemCalculado.productId);
@@ -324,7 +366,9 @@ async function create({
       });
     }
 
-    // Procesar stock y seriales
+    // ============================================================
+    // PASO 7: PROCESAR STOCK Y SERIALES
+    // ============================================================
     if (saleStatus === "COMPLETADA") {
       for (const saleItemWithMeta of createdItems) {
         const product = byId.get(saleItemWithMeta.productId);
@@ -366,7 +410,9 @@ async function create({
       }
     }
 
-    // Retornar la venta completa
+    // ============================================================
+    // RETORNAR LA VENTA COMPLETA
+    // ============================================================
     const finalSale = await tx.sale.findUnique({
       where: { id: created.id },
       include: {

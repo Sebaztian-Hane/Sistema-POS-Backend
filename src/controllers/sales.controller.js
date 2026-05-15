@@ -70,17 +70,18 @@ async function create(req, res, next) {
   try {
     const body = req.body ?? {};
     
-    // PRIORIDAD MÁXIMA: tipoComprobante es OBLIGATORIO ahora
     const { 
-      customerId, 
-      tipoComprobante,  // NUEVO: 'FACTURA' o 'BOLETA'
+      documentoCliente,
+      tipoComprobante,
       items, 
       payments, 
       descuento: extraDescuentoRaw, 
       status 
     } = body;
 
-    // Validación CRÍTICA para SUNAT
+    // ============================================================
+    // VALIDACIÓN #1: tipoComprobante es OBLIGATORIO
+    // ============================================================
     if (!tipoComprobante) {
       return res.status(400).json({ 
         message: "tipoComprobante es obligatorio. Valores permitidos: 'FACTURA' o 'BOLETA'" 
@@ -95,36 +96,78 @@ async function create(req, res, next) {
       });
     }
 
+    // ============================================================
+    // VALIDACIÓN #2: FACTURA REQUIERE RUC (CRÍTICO PARA SUNAT)
+    // ============================================================
+    if (tipoComprobante === 'FACTURA') {
+      // Factura debe tener documento
+      if (!documentoCliente) {
+        return res.status(400).json({
+          message: "Factura requiere RUC del cliente"
+        });
+      }
+      
+      // Factura requiere RUC (11 dígitos)
+      const docLimpio = String(documentoCliente).trim();
+      if (docLimpio.length !== 11) {
+        return res.status(400).json({
+          message: "Factura requiere RUC válido de 11 dígitos"
+        });
+      }
+      
+      // Validar que sea solo números
+      if (!/^\d+$/.test(docLimpio)) {
+        return res.status(400).json({
+          message: "RUC debe contener solo números"
+        });
+      }
+    }
+
+    // ============================================================
+    // VALIDACIÓN #3: BOLETA - DOCUMENTO ES OPCIONAL (válido)
+    // ============================================================
+    // Si es BOLETA y tiene documento, validar formato
+    if (tipoComprobante === 'BOLETA' && documentoCliente) {
+      const docLimpio = String(documentoCliente).trim();
+      // Puede ser DNI (8 dígitos) o RUC (11 dígitos)
+      if (docLimpio.length !== 8 && docLimpio.length !== 11) {
+        return res.status(400).json({
+          message: "documentoCliente para BOLETA debe ser DNI (8 dígitos) o RUC (11 dígitos)"
+        });
+      }
+      
+      // Validar que sea solo números
+      if (!/^\d+$/.test(docLimpio)) {
+        return res.status(400).json({
+          message: "Documento debe contener solo números"
+        });
+      }
+    }
+
+    // Validar items
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "items debe ser un array no vacío" });
     }
+    
+    // Validar payments
     if (!Array.isArray(payments) || payments.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "payments debe ser un array no vacío" });
+      return res.status(400).json({ message: "payments debe ser un array no vacío" });
     }
 
     const userId = req.user.id;
-    const customerIdParsed =
-      customerId === undefined || customerId === null
-        ? null
-        : parseInt(customerId, 10);
-    if (customerIdParsed !== null && !Number.isFinite(customerIdParsed)) {
-      return res.status(400).json({ message: "customerId inválido" });
-    }
 
-    // CRÍTICO: Enviar tipoComprobante al servicio
+    // Crear la venta
     const sale = await salesService.create({
       userId,
-      customerId: customerIdParsed,
-      tipoComprobante,  // ENVIAR OBLIGATORIAMENTE
+      documentoCliente,
+      tipoComprobante,
       items,
       payments,
       extraDescuentoRaw,
       status,
     });
 
-    // Respuesta mejorada con información tributaria
+    // Respuesta exitosa
     res.status(201).json({
       ok: true,
       message: "Venta creada exitosamente",
@@ -136,6 +179,7 @@ async function create(req, res, next) {
         correlativo: sale.correlativo,
         fechaEmision: sale.fechaEmision,
         total: sale.total,
+        customer: sale.customer,
         ...sale
       }
     });

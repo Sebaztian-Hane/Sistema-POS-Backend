@@ -102,7 +102,7 @@ model Customer {
   nombre        String
   razonSocial   String?
   tipoDocumento TipoDocumento @default(SIN_DOC)
-  nroDocumento  String?
+  nroDocumento  String?       @unique
   email         String?
   telefono      String?
   direccion     String?
