@@ -13,6 +13,8 @@ const usersRoutes = require("./routes/users.routes");
 const notificationsRoutes = require("./routes/notifications.routes");
 const { authenticate } = require("./middlewares/auth.middleware");
 const { requireStaff } = require("./middlewares/role.middleware");
+const cron = require('node-cron');
+const { syncPendientes } = require('./services/syncSunatStatus.service');
 
 const app = express();
 
@@ -95,3 +97,22 @@ if (shouldStartServer()) {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 }
+
+cron.schedule('*/5 * * * *', async () => {
+
+  try {
+
+    console.log(
+      '[CRON] Ejecutando syncSunatStatus...'
+    );
+
+    await syncPendientes();
+
+  } catch (error) {
+
+    console.error(
+      '[CRON ERROR]',
+      error
+    );
+  }
+});

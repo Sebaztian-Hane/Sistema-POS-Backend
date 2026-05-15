@@ -86,10 +86,10 @@ enum TipoComprobante {
 
 enum SunatStatus {
   PENDIENTE
-  ENVIADO
   ACEPTADO
   RECHAZADO
-  ERROR
+  EXCEPCION
+  ANULADO
 }
 
 enum CurrencyCode {
@@ -212,21 +212,24 @@ enum SaleStatus {
 }
 
 model ElectronicDocument {
-  id               Int          @id @default(autoincrement())
-  saleId           Int          @unique
-  sale             Sale         @relation(fields: [saleId], references: [id])
-  fileName         String       @unique
-  payloadJson      Json
-  apiResponse      Json?
-  hash             String?
-  qrData           String?
-  cdrCode          String?
-  cdrDescription   String?
-  ticket           String?
-  sunatStatus      SunatStatus  @default(PENDIENTE)
-  sentAt           DateTime?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id Int @id @default(autoincrement())
+  saleId Int @unique
+  sale Sale @relation(fields: [saleId], references: [id])
+  tipoComprobante TipoComprobante
+  serie String
+  correlativo Int
+  fileName String?
+  documentId String?
+  payloadJson Json?
+  respuestaSunat Json?
+  sunatStatus SunatStatus @default(PENDIENTE)
+  xmlUrl String?
+  cdrUrl String?
+  observaciones String?
+  enviadoEn DateTime?
+  respondedEn DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Sale {

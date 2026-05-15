@@ -5,7 +5,7 @@ const { generarSerieCorrelativo } = require('../utils/generarSerieCorrelativo');
 const { buscarOcrearCliente } = require('./customerLookup.service');
 const { generarComprobanteJson } = require('../utils/generarComprobanteJson');
 const { crearDocumentoElectronico, actualizarEstadoDocumento } = require('./electronicDocument.service');
-const { enviarComprobanteApisunat } = require('./apisunat.service');
+const { sendBill, voidBill} = require('./apisunat.service');
 
 function toDecimal(value) {
   const n = Number(value);
@@ -19,7 +19,6 @@ function decNum(d) {
   return Number(d);
 }
 
-// Helper para redondeo consistente
 const roundTo2 = (value) => {
   return Number(Number(value).toFixed(2));
 };
@@ -77,7 +76,7 @@ async function getOne(id) {
       customer: true,
       items: { include: { product: { select: { id: true, upc: true } } } },
       payments: { include: { paymentMethod: true } },
-      electronicDocument: true,  // Incluir documento electrónico
+      electronicDocument: true,
     },
   });
 }
@@ -104,7 +103,21 @@ async function create({
       : "COMPLETADA";
 
   // ============================================================
-  // PASO 1: RESOLVER CLIENTE (FUERA del transaction)
+  // PASO 1: OBTENER DATOS DE LA EMPRESA (FUERA del transaction)
+  // ============================================================
+  const company = await prisma.company.findFirst({
+    where: { isActive: true }
+  });
+  
+  if (!company) {
+    throw Object.assign(
+      new Error("No existe configuración de empresa activa. Contacte al administrador."),
+      { statusCode: 500 }
+    );
+  }
+
+  // ============================================================
+  // PASO 2: RESOLVER CLIENTE (FUERA del transaction)
   // ============================================================
   let customer = null;
   
@@ -113,7 +126,7 @@ async function create({
   }
 
   // ============================================================
-  // PASO 2: VALIDACIÓN CRÍTICA PARA FACTURA
+  // PASO 3: VALIDACIÓN CRÍTICA PARA FACTURA
   // ============================================================
   if (tipoComprobante === 'FACTURA') {
     if (!customer) {
@@ -191,22 +204,11 @@ async function create({
   }
 
   // ============================================================
-  // OBTENER DATOS DE LA EMPRESA (FUERA del transaction)
   // ============================================================
-  const company = await prisma.company.findFirst({
-    where: { isActive: true }
-  });
-  
-  if (!company) {
-    throw Object.assign(
-      new Error("No existe configuración de empresa activa. Contacte al administrador."),
-      { statusCode: 500 }
-    );
-  }
+  // TRANSACTION (SOLO DATOS CRÍTICOS - NO LLAMADAS EXTERNAS)
   // ============================================================
-  // TRANSACTION
   // ============================================================
-  return await prisma.$transaction(async (tx) => {
+  const finalSale = await prisma.$transaction(async (tx) => {
     // Obtener productos
     const productIds = [...new Set(lineInputs.map((l) => l.productId))];
     const products = await tx.product.findMany({
@@ -245,9 +247,7 @@ async function create({
       }
     }
 
-    // ============================================================
-    // PASO 3: CALCULAR TOTALES
-    // ============================================================
+    // Calcular totales
     const descuentoExtraPorItem = Number(
       (
         Number(extraDescuentoRaw || 0) / items.length
@@ -301,17 +301,13 @@ async function create({
       totalParaGuardar = decNum(paySum);
     }
 
-    // ============================================================
-    // PASO 4: GENERAR SERIE Y CORRELATIVO
-    // ============================================================
+    // Generar serie y correlativo
     const { serie, correlativo } = await generarSerieCorrelativo({
       tx,
       tipoComprobante
     });
 
-    // ============================================================
-    // PASO 5: CREAR LA VENTA
-    // ============================================================
+    // Crear la venta
     const fechaEmision = new Date();
     
     const created = await tx.sale.create({
@@ -337,9 +333,7 @@ async function create({
       },
     });
 
-    // ============================================================
-    // PASO 6: CREAR LOS SALEITEMS
-    // ============================================================
+    // Crear los SaleItems
     const saleItemsToCreate = totalesCalculados.itemsCalculados.map((itemCalculado) => {
       const originalItem = items.find(i => parseInt(i.productId, 10) === itemCalculado.productId);
       const product = byId.get(itemCalculado.productId);
@@ -380,9 +374,7 @@ async function create({
       });
     }
 
-    // ============================================================
-    // PASO 7: PROCESAR STOCK Y SERIALES
-    // ============================================================
+    // Procesar stock y seriales (solo si está COMPLETADA)
     if (saleStatus === "COMPLETADA") {
       for (const saleItemWithMeta of createdItems) {
         const product = byId.get(saleItemWithMeta.productId);
@@ -424,75 +416,8 @@ async function create({
       }
     }
 
-    // ============================================================
-    // PASO 8: GENERAR Y ENVIAR COMPROBANTE ELECTRÓNICO
-    // SOLO si la venta está COMPLETADA
-    // ============================================================
-    let electronicDocumentResult = null;
-    
-    if (saleStatus === "COMPLETADA") {
-      try {
-        // Obtener la venta completa con sus relaciones
-        const saleCompleta = await tx.sale.findUnique({
-          where: { id: created.id },
-          include: {
-            customer: true,
-            items: true,
-          }
-        });
-        
-        // 8.1: Generar JSON del comprobante
-        const comprobanteJson = generarComprobanteJson({
-          company,
-          sale: saleCompleta
-        });
-        
-        // 8.2: Crear registro del documento electrónico
-        await crearDocumentoElectronico({
-          saleId: created.id,
-          tipoComprobante,
-          serie,
-          correlativo,
-          payloadJson: comprobanteJson
-        });
-        
-        // 8.3: Enviar a API SUNAT
-        const respuestaSunat = await enviarComprobanteApisunat(comprobanteJson);
-        
-        // 8.4: Actualizar estado del documento
-        electronicDocumentResult = await actualizarEstadoDocumento({
-          saleId: created.id,
-          estado: respuestaSunat.success ? 'ACEPTADO' : 'RECHAZADO',
-          respuestaSunat,
-          observaciones: respuestaSunat.message || respuestaSunat.cdrDescription,
-          codigoHash: respuestaSunat.hash,
-          codigoCdr: respuestaSunat.cdrCode
-        });
-        
-        console.log(`Comprobante ${serie}-${correlativo} enviado a SUNAT. Estado: ${respuestaSunat.success ? 'ACEPTADO' : 'RECHAZADO'}`);
-        
-      } catch (error) {
-        console.error('Error al enviar comprobante a SUNAT:', error);
-        
-        // Registrar el error en el documento electrónico
-        await actualizarEstadoDocumento({
-          saleId: created.id,
-          estado: 'ERROR',
-          respuestaSunat: null,
-          observaciones: error.message,
-          codigoHash: null,
-          codigoCdr: null
-        });
-        
-        // No lanzamos error para no afectar la creación de la venta
-        // pero registramos el problema
-      }
-    }
-
-    // ============================================================
-    // RETORNAR LA VENTA COMPLETA
-    // ============================================================
-    const finalSale = await tx.sale.findUnique({
+    // Retornar la venta completa (sin electronicDocument aún)
+    const saleCompleta = await tx.sale.findUnique({
       where: { id: created.id },
       include: {
         customer: true,
@@ -508,16 +433,105 @@ async function create({
             username: true,
             email: true
           }
-        },
-        electronicDocument: true  // Incluir info del documento electrónico
+        }
       }
     });
 
-    return finalSale;
+    return saleCompleta;
   });
+
+  // ============================================================
+  // ============================================================
+  // FUERA DEL TRANSACTION: ENVÍO A SUNAT
+  // ============================================================
+  // ============================================================
+  
+  // Solo enviar a SUNAT si la venta está COMPLETADA
+  if (finalSale.status === "COMPLETADA") {
+    try {
+      console.log(`Generando comprobante electrónico para venta #${finalSale.id}...`);
+      
+      // 1. Generar JSON del comprobante
+      const comprobanteJson = generarComprobanteJson({
+        company,
+        sale: finalSale
+      });
+      
+      // 2. Crear registro del documento electrónico (estado PENDIENTE)
+      await crearDocumentoElectronico({
+        saleId: finalSale.id,
+        tipoComprobante: finalSale.tipoComprobante,
+        serie: finalSale.serie,
+        correlativo: finalSale.correlativo,
+        payloadJson: comprobanteJson
+      });
+      
+      console.log(`Registro electrónico creado para ${finalSale.serie}-${finalSale.correlativo}`);
+      
+      // 3. Enviar a APISUNAT
+      const respuestaSunat = await sendBill(comprobanteJson);
+      
+      console.log(`Respuesta SUNAT recibida:`, respuestaSunat);
+      
+      // 4. Actualizar estado del documento según respuesta
+      await actualizarEstadoDocumento({
+        saleId: finalSale.id,
+        estado: respuestaSunat.status,
+        respuestaSunat,
+        observaciones: respuestaSunat.message || respuestaSunat.cdrDescription,
+        codigoHash: respuestaSunat.hash,
+        codigoCdr: respuestaSunat.cdrCode
+      });
+      
+      console.log(`✅ Comprobante ${finalSale.serie}-${finalSale.correlativo} enviado a SUNAT. Estado: ${respuestaSunat.status}`);
+      
+    } catch (error) {
+      console.error('❌ Error en facturación electrónica:', error);
+      
+      // Registrar el error pero NO romper la venta
+      try {
+        await actualizarEstadoDocumento({
+          saleId: finalSale.id,
+          estado: 'ERROR',
+          respuestaSunat: { error: error.message },
+          observaciones: error.message,
+          codigoHash: null,
+          codigoCdr: null
+        });
+      } catch (dbError) {
+        console.error('Error al registrar estado de documento:', dbError);
+      }
+    }
+  }
+
+  // ============================================================
+  // Obtener la venta final CON el documento electrónico
+  // ============================================================
+  const saleWithElectronicDoc = await prisma.sale.findUnique({
+    where: { id: finalSale.id },
+    include: {
+      customer: true,
+      items: true,
+      payments: {
+        include: {
+          paymentMethod: true
+        }
+      },
+      user: {
+        select: {
+          id: true,
+          username: true,
+          email: true
+        }
+      },
+      electronicDocument: true
+    }
+  });
+
+  return saleWithElectronicDoc;
 }
 
-async function anular(id) {
+async function anular(id, motivoAnulacion = "ANULACION DE VENTA") {
   return await prisma.$transaction(async (tx) => {
     const sale = await tx.sale.findUnique({
       where: { id },
@@ -527,17 +541,86 @@ async function anular(id) {
       },
     });
 
-    if (!sale || sale.status === "ANULADA") {
-      throw Object.assign(new Error("Venta no encontrada o ya anulada"), { statusCode: 400 });
+    if (!sale) {
+      throw Object.assign(new Error("Venta no encontrada"), { statusCode: 404 });
     }
 
+    if (sale.status === "ANULADA") {
+      throw Object.assign(new Error("La venta ya está anulada"), { statusCode: 400 });
+    }
+
+    // ============================================================
+    // 1. SI TIENE DOCUMENTO ELECTRÓNICO Y ESTÁ ACEPTADO → ANULAR EN SUNAT
+    // ============================================================
+    let voidBillResult = null;
+    
+    if (sale.electronicDocument && sale.electronicDocument.documentId) {
+      const docElectronico = sale.electronicDocument;
+      
+      // Solo anular en SUNAT si no está ya anulado o rechazado
+      if (docElectronico.sunatStatus === 'ACEPTADO' || docElectronico.sunatStatus === 'PENDIENTE') {
+        try {
+          // Obtener datos de la empresa
+          const company = await prisma.company.findFirst({
+            where: { isActive: true }
+          });
+
+          if (!company) {
+            throw new Error("No se encontró configuración de empresa activa");
+          }
+
+          console.log(`[ANULAR] Enviando anulación a APISUNAT para documento: ${docElectronico.documentId}`);
+          
+          // Llamar a voidBill de APISUNAT
+          voidBillResult = await voidBill({
+            personaId: company.personaId,
+            personaToken: company.personaToken,
+            documentId: docElectronico.documentId,
+            reason: motivoAnulacion
+          });
+
+          console.log(`[ANULAR] Respuesta voidBill:`, voidBillResult);
+
+          // Actualizar el documento electrónico
+          await tx.electronicDocument.update({
+            where: { id: docElectronico.id },
+            data: {
+              sunatStatus: 'ANULADO',  // Necesitas agregar 'ANULADO' al enum SunatStatus
+              observaciones: `Anulado por: ${motivoAnulacion}. Respuesta SUNAT: ${JSON.stringify(voidBillResult)}`,
+              respondedEn: new Date()
+            }
+          });
+
+        } catch (error) {
+          console.error('[ANULAR] Error al anular en APISUNAT:', error);
+          
+          // Registrar error pero continuar con la anulación local
+          if (docElectronico) {
+            await tx.electronicDocument.update({
+              where: { id: docElectronico.id },
+              data: {
+                observaciones: `Error al anular en SUNAT: ${error.message}`
+              }
+            });
+          }
+          
+          // No lanzamos error para permitir anulación local
+        }
+      }
+    }
+
+    // ============================================================
+    // 2. RESTAURAR STOCK Y SERIALES
+    // ============================================================
     if (sale.status === "COMPLETADA") {
       for (const item of sale.items) {
+        // Devolver stock
         await tx.product.update({
           where: { id: item.productId },
           data: { stockCurrent: { increment: item.quantity } },
         });
 
+        // Si tenía un item serializado, liberarlo
         if (item.productItem) {
           await tx.productItem.update({
             where: { id: item.productItem.id },
@@ -545,34 +628,35 @@ async function anular(id) {
           });
         }
 
+        // Registrar movimiento de stock
         await tx.stockMovement.create({
           data: {
             productId: item.productId,
             type: "DEVOLUCION",
             quantity: item.quantity,
             referenceId: sale.id,
-            note: "Anulación de venta",
+            note: `Anulación de venta${voidBillResult ? ' - Comprobante anulado en SUNAT' : ''}`,
           },
         });
       }
-      
-      // TODO: Enviar anulación a SUNAT si el comprobante fue aceptado
-      if (sale.electronicDocument && sale.electronicDocument.sunatStatus === 'ACEPTADO') {
-        // Aquí iría la lógica para enviar la anulación a SUNAT
-        console.log(`Pendiente: Enviar anulación del comprobante ${sale.serie}-${sale.correlativo} a SUNAT`);
-      }
     }
 
+    // ============================================================
+    // 3. ACTUALIZAR ESTADO DE LA VENTA
+    // ============================================================
     const updated = await tx.sale.update({
       where: { id },
       data: { status: "ANULADA" },
-      include: { items: true, customer: true, user: true },
+      include: { items: true, customer: true, user: true, electronicDocument: true },
     });
 
+    // ============================================================
+    // 4. CREAR NOTIFICACIÓN
+    // ============================================================
     await tx.notification.create({
       data: {
         type: "VENTA_ANULADA",
-        message: `Venta #${sale.id} anulada`,
+        message: `Venta #${sale.id} (${sale.serie}-${String(sale.correlativo).padStart(8, '0')}) anulada${voidBillResult ? ' - Comprobante anulado en SUNAT' : ''}`,
         referenceId: sale.id,
         isRead: false,
       },
