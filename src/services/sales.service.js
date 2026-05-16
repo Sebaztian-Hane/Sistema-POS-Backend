@@ -463,6 +463,7 @@ async function create({
         tipoComprobante: finalSale.tipoComprobante,
         serie: finalSale.serie,
         correlativo: finalSale.correlativo,
+        fileName: comprobanteJson.fileName,  // ← Agregar fileName
         payloadJson: comprobanteJson
       });
       
@@ -476,11 +477,12 @@ async function create({
       // 4. Actualizar estado del documento según respuesta
       await actualizarEstadoDocumento({
         saleId: finalSale.id,
-        estado: respuestaSunat.status,
+        estado: respuestaSunat.status,  // "PENDIENTE"
+        documentId: respuestaSunat.documentId,
         respuestaSunat,
-        observaciones: respuestaSunat.message || respuestaSunat.cdrDescription,
-        codigoHash: respuestaSunat.hash,
-        codigoCdr: respuestaSunat.cdrCode
+        observaciones: null,
+        xmlUrl: null,
+        cdrUrl: null
       });
       
       console.log(`✅ Comprobante ${finalSale.serie}-${finalSale.correlativo} enviado a SUNAT. Estado: ${respuestaSunat.status}`);
@@ -495,8 +497,9 @@ async function create({
           estado: 'ERROR',
           respuestaSunat: { error: error.message },
           observaciones: error.message,
-          codigoHash: null,
-          codigoCdr: null
+          xmlUrl: null,
+          cdrUrl: null,
+          documentId: null
         });
       } catch (dbError) {
         console.error('Error al registrar estado de documento:', dbError);
