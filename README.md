@@ -159,17 +159,15 @@ http://localhost:3000/api
 ### `POST /auth/login`
 Iniciar sesión y obtener JWT token.
 
-**Request:**
-```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@pos.com",
-    "password": "admin123"
-  }'
-```
+**En Postman:**
 
-**Body:**
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/auth/login` |
+| **Headers** | `Content-Type: application/json` |
+
+**Body (JSON):**
 ```json
 {
   "email": "admin@pos.com",
@@ -207,16 +205,13 @@ curl -X POST http://localhost:3000/api/auth/login \
 ### `GET /products`
 Listar todos los productos con paginación.
 
-**Query Parameters:**
-```
-?page=1&limit=20
-```
+**En Postman:**
 
-**Request:**
-```bash
-curl -X GET "http://localhost:3000/api/products?page=1&limit=20" \
-  -H "Authorization: Bearer <token>"
-```
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/products?page=1&limit=20` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -253,11 +248,13 @@ curl -X GET "http://localhost:3000/api/products?page=1&limit=20" \
 ### `GET /products/:id`
 Obtener detalles completos de un producto.
 
-**Request:**
-```bash
-curl -X GET "http://localhost:3000/api/products/1" \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/products/1` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -289,27 +286,16 @@ curl -X GET "http://localhost:3000/api/products/1" \
 ### `POST /products` (Solo ADMIN)
 Crear un nuevo producto.
 
-**Request:**
-```bash
-curl -X POST http://localhost:3000/api/products \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sku": "MOUSE-001",
-    "name": "Mouse Gamer Inalámbrico",
-    "description": "Mouse de 16000 DPI",
-    "price": 85.50,
-    "cost": 40.00,
-    "stockCurrent": 50,
-    "stockMin": 10,
-    "categoryId": 1,
-    "coverImageUrl": "https://example.com/mouse.jpg",
-    "tags": ["gaming", "pc"],
-    "isFeatured": false
-  }'
-```
+**En Postman:**
 
-**Body:**
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/products` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
 ```json
 {
   "sku": "MOUSE-001",
@@ -351,16 +337,22 @@ curl -X POST http://localhost:3000/api/products \
 ### `PUT /products/:id` (Solo ADMIN)
 Actualizar datos de un producto.
 
-**Request:**
-```bash
-curl -X PUT http://localhost:3000/api/products/1 \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Teclado Gamer RGB V2",
-    "price": 160.00,
-    "stockMin": 8
-  }'
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PUT` |
+| **URL** | `http://localhost:3000/api/products/1` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "name": "Teclado Gamer RGB V2",
+  "price": 160.00,
+  "stockMin": 8
+}
 ```
 
 **Response (200):**
@@ -379,11 +371,13 @@ curl -X PUT http://localhost:3000/api/products/1 \
 ### `DELETE /products/:id` (Solo ADMIN)
 Eliminar un producto (soft delete - marca como inactivo).
 
-**Request:**
-```bash
-curl -X DELETE http://localhost:3000/api/products/1 \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `DELETE` |
+| **URL** | `http://localhost:3000/api/products/1` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -397,19 +391,16 @@ curl -X DELETE http://localhost:3000/api/products/1 \
 ### `PATCH /products/:id/stock` (Solo ADMIN)
 Ajustar el stock de un producto.
 
-**Request:**
-```bash
-curl -X PATCH http://localhost:3000/api/products/1/stock \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "ENTRADA",
-    "quantity": 10,
-    "note": "Compra de nueva mercadería"
-  }'
-```
+**En Postman:**
 
-**Body:**
+| Campo | Valor |
+|---|---|
+| **Método** | `PATCH` |
+| **URL** | `http://localhost:3000/api/products/1/stock` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
 ```json
 {
   "type": "ENTRADA",
@@ -440,14 +431,20 @@ curl -X PATCH http://localhost:3000/api/products/1/stock \
 ### `POST /products/:id/items` (Solo ADMIN)
 Agregar números de serie a un producto.
 
-**Request:**
-```bash
-curl -X POST http://localhost:3000/api/products/5/items \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "serials": ["SN001", "SN002", "SN003"]
-  }'
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/products/5/items` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "serials": ["SN001", "SN002", "SN003"]
+}
 ```
 
 **Response (201):**
@@ -465,11 +462,13 @@ curl -X POST http://localhost:3000/api/products/5/items \
 ### `GET /categories`
 Listar todas las categorías.
 
-**Request:**
-```bash
-curl -X GET http://localhost:3000/api/categories \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/categories` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -494,15 +493,21 @@ curl -X GET http://localhost:3000/api/categories \
 ### `POST /categories` (Solo ADMIN)
 Crear una nueva categoría.
 
-**Request:**
-```bash
-curl -X POST http://localhost:3000/api/categories \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Sillas Gaming",
-    "description": "Sillas ergonómicas para gaming"
-  }'
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/categories` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "name": "Sillas Gaming",
+  "description": "Sillas ergonómicas para gaming"
+}
 ```
 
 **Response (201):**
@@ -519,15 +524,21 @@ curl -X POST http://localhost:3000/api/categories \
 ### `PUT /categories/:id` (Solo ADMIN)
 Actualizar una categoría.
 
-**Request:**
-```bash
-curl -X PUT http://localhost:3000/api/categories/1 \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Accesorios PC",
-    "description": "Todos los accesorios para computadora"
-  }'
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PUT` |
+| **URL** | `http://localhost:3000/api/categories/1` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "name": "Accesorios PC",
+  "description": "Todos los accesorios para computadora"
+}
 ```
 
 **Response (200):**
@@ -544,11 +555,13 @@ curl -X PUT http://localhost:3000/api/categories/1 \
 ### `DELETE /categories/:id` (Solo ADMIN)
 Eliminar una categoría.
 
-**Request:**
-```bash
-curl -X DELETE http://localhost:3000/api/categories/1 \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `DELETE` |
+| **URL** | `http://localhost:3000/api/categories/1` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -564,16 +577,13 @@ curl -X DELETE http://localhost:3000/api/categories/1 \
 ### `GET /customers`
 Listar todos los clientes con paginación.
 
-**Query Parameters:**
-```
-?page=1&limit=20
-```
+**En Postman:**
 
-**Request:**
-```bash
-curl -X GET "http://localhost:3000/api/customers?page=1&limit=20" \
-  -H "Authorization: Bearer <token>"
-```
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/customers?page=1&limit=20` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -604,11 +614,13 @@ curl -X GET "http://localhost:3000/api/customers?page=1&limit=20" \
 ### `GET /customers/:id`
 Obtener detalles de un cliente.
 
-**Request:**
-```bash
-curl -X GET http://localhost:3000/api/customers/1 \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/customers/1` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -648,42 +660,60 @@ Crear un nuevo cliente con validación automática contra SUNAT.
 | `telefono` | string | ❌ | Teléfono |
 | `direccion` | string | ❌ | Dirección (se completa automáticamente para RUC) |
 
-**Request - Ejemplo 1: Con DNI real (se valida en SUNAT):**
-```bash
-curl -X POST http://localhost:3000/api/customers \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tipoDocumento": "DNI",
-    "nroDocumento": "12345678",
-    "email": "juan@email.com",
-    "telefono": "987654321"
-  }'
+**En Postman - Ejemplo 1: Con DNI real (se valida en SUNAT)**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/customers` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "tipoDocumento": "DNI",
+  "nroDocumento": "12345678",
+  "email": "juan@email.com",
+  "telefono": "987654321"
+}
 ```
 
-**Request - Ejemplo 2: Con RUC real (se valida en SUNAT):**
-```bash
-curl -X POST http://localhost:3000/api/customers \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tipoDocumento": "RUC",
-    "nroDocumento": "20123456789",
-    "email": "empresa@empresa.com",
-    "telefono": "014459999"
-  }'
+**En Postman - Ejemplo 2: Con RUC real (se valida en SUNAT)**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/customers` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "tipoDocumento": "RUC",
+  "nroDocumento": "20123456789",
+  "email": "empresa@empresa.com",
+  "telefono": "014459999"
+}
 ```
 
-**Request - Ejemplo 3: Sin documento (solo nombre):**
-```bash
-curl -X POST http://localhost:3000/api/customers \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "nombre": "Cliente sin documento",
-    "tipoDocumento": "SIN_DOC",
-    "email": "cliente@email.com"
-  }'
+**En Postman - Ejemplo 3: Sin documento (solo nombre)**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/customers` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "nombre": "Cliente sin documento",
+  "tipoDocumento": "SIN_DOC",
+  "email": "cliente@email.com"
+}
 ```
 
 **Response (201) - Con DNI validado:**
@@ -734,15 +764,21 @@ curl -X POST http://localhost:3000/api/customers \
 ### `PUT /customers/:id`
 Actualizar datos de un cliente.
 
-**Request:**
-```bash
-curl -X PUT http://localhost:3000/api/customers/1 \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "juannuevo@email.com",
-    "telefono": "989999999"
-  }'
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PUT` |
+| **URL** | `http://localhost:3000/api/customers/1` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "email": "juannuevo@email.com",
+  "telefono": "989999999"
+}
 ```
 
 **Response (200):**
@@ -765,11 +801,13 @@ curl -X PUT http://localhost:3000/api/customers/1 \
 ### `DELETE /customers/:id` (Solo ADMIN)
 Eliminar un cliente (soft delete).
 
-**Request:**
-```bash
-curl -X DELETE http://localhost:3000/api/customers/1 \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `DELETE` |
+| **URL** | `http://localhost:3000/api/customers/1` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -785,15 +823,17 @@ curl -X DELETE http://localhost:3000/api/customers/1 \
 ### `GET /sales`
 Listar todas las ventas con filtros y paginación.
 
-**Query Parameters:**
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/sales?page=1&limit=20&from=2024-05-01` |
+| **Headers** | `Authorization: Bearer <token>` |
+
+**Query Parameters opcionales:**
 ```
 ?page=1&limit=20&userId=1&customerId=5&from=2024-05-01&to=2024-05-31
-```
-
-**Request:**
-```bash
-curl -X GET "http://localhost:3000/api/sales?page=1&limit=20&from=2024-05-01" \
-  -H "Authorization: Bearer <token>"
 ```
 
 **Response (200):**
@@ -868,11 +908,13 @@ curl -X GET "http://localhost:3000/api/sales?page=1&limit=20&from=2024-05-01" \
 ### `GET /sales/:id`
 Obtener detalles completos de una venta.
 
-**Request:**
-```bash
-curl -X GET http://localhost:3000/api/sales/1 \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/sales/1` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -906,70 +948,19 @@ Crear una nueva venta. **Este es el endpoint más importante del sistema.**
 - Payments no puede estar vacío
 - La suma de payments debe ser igual a total
 
-**Request - Ejemplo 1: Venta simple (Boleta sin cliente):**
-```bash
-curl -X POST http://localhost:3000/api/sales \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tipoComprobante": "BOLETA",
-    "items": [
-      {
-        "productId": 1,
-        "quantity": 2,
-        "descuento": 0
-      }
-    ],
-    "payments": [
-      {
-        "paymentMethodId": 1,
-        "amount": 300
-      }
-    ]
-  }'
-```
+**En Postman - Ejemplo 1: Venta simple (Boleta sin cliente)**
 
-**Request - Ejemplo 2: Factura con cliente RUC:**
-```bash
-curl -X POST http://localhost:3000/api/sales \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tipoComprobante": "FACTURA",
-    "documentoCliente": "20123456789",
-    "customerId": 5,
-    "items": [
-      {
-        "productId": 1,
-        "quantity": 1,
-        "descuento": 50
-      },
-      {
-        "productId": 2,
-        "quantity": 3,
-        "descuento": 0
-      }
-    ],
-    "payments": [
-      {
-        "paymentMethodId": 1,
-        "amount": 150
-      },
-      {
-        "paymentMethodId": 3,
-        "amount": 265
-      }
-    ],
-    "descuento": 20
-  }'
-```
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/sales` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
 
-**Body - Estructura completa:**
+**Body (JSON):**
 ```json
 {
   "tipoComprobante": "BOLETA",
-  "documentoCliente": "12345678",
-  "customerId": 3,
   "items": [
     {
       "productId": 1,
@@ -982,8 +973,48 @@ curl -X POST http://localhost:3000/api/sales \
       "paymentMethodId": 1,
       "amount": 300
     }
+  ]
+}
+```
+
+**En Postman - Ejemplo 2: Factura con cliente RUC**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/sales` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "tipoComprobante": "FACTURA",
+  "documentoCliente": "20123456789",
+  "customerId": 5,
+  "items": [
+    {
+      "productId": 1,
+      "quantity": 1,
+      "descuento": 50
+    },
+    {
+      "productId": 2,
+      "quantity": 3,
+      "descuento": 0
+    }
   ],
-  "descuento": 0
+  "payments": [
+    {
+      "paymentMethodId": 1,
+      "amount": 150
+    },
+    {
+      "paymentMethodId": 3,
+      "amount": 265
+    }
+  ],
+  "descuento": 20
 }
 ```
 
@@ -1038,11 +1069,13 @@ curl -X POST http://localhost:3000/api/sales \
 ### `GET /sales/:id/sunat-status`
 Obtener el estado de un documento en SUNAT.
 
-**Request:**
-```bash
-curl -X GET http://localhost:3000/api/sales/1/sunat-status \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/sales/1/sunat-status` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -1061,26 +1094,35 @@ curl -X GET http://localhost:3000/api/sales/1/sunat-status \
 ### `GET /sales/:id/pdf`
 Descargar el PDF del comprobante (SUNAT).
 
-**Request:**
-```bash
-curl -X GET http://localhost:3000/api/sales/1/pdf \
-  -H "Authorization: Bearer <token>" \
-  --output comprobante.pdf
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/sales/1/pdf` |
+| **Headers** | `Authorization: Bearer <token>` |
+
+La respuesta será un archivo PDF descargable.
 
 ---
 
 ### `PATCH /sales/:id/anular`
 Anular una venta completada y devolver el stock.
 
-**Request:**
-```bash
-curl -X PATCH http://localhost:3000/api/sales/1/anular \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "razon": "Venta cancelada por error del cliente"
-  }'
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PATCH` |
+| **URL** | `http://localhost:3000/api/sales/1/anular` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "razon": "Venta cancelada por error del cliente"
+}
 ```
 
 **Response (200):**
@@ -1107,11 +1149,13 @@ curl -X PATCH http://localhost:3000/api/sales/1/anular \
 ### `POST /sales/:id/retry-sunat`
 Reintentar envío a SUNAT de un comprobante que falló.
 
-**Request:**
-```bash
-curl -X POST http://localhost:3000/api/sales/1/retry-sunat \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/sales/1/retry-sunat` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -1128,16 +1172,13 @@ curl -X POST http://localhost:3000/api/sales/1/retry-sunat \
 ### `GET /users`
 Listar todos los usuarios del sistema.
 
-**Query Parameters:**
-```
-?page=1&limit=20
-```
+**En Postman:**
 
-**Request:**
-```bash
-curl -X GET "http://localhost:3000/api/users?page=1&limit=20" \
-  -H "Authorization: Bearer <token>"
-```
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/users?page=1&limit=20` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -1173,20 +1214,16 @@ curl -X GET "http://localhost:3000/api/users?page=1&limit=20" \
 ### `POST /users` (Solo ADMIN)
 Crear un nuevo usuario.
 
-**Request:**
-```bash
-curl -X POST http://localhost:3000/api/users \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "vendedor2",
-    "email": "vendedor2@pos.com",
-    "password": "vendedor123",
-    "roleId": 2
-  }'
-```
+**En Postman:**
 
-**Body:**
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/users` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
 ```json
 {
   "username": "vendedor2",
@@ -1213,15 +1250,21 @@ curl -X POST http://localhost:3000/api/users \
 ### `PUT /users/:id` (Solo ADMIN)
 Actualizar datos de un usuario.
 
-**Request:**
-```bash
-curl -X PUT http://localhost:3000/api/users/2 \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "vendedor_nuevo@pos.com",
-    "roleId": 1
-  }'
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PUT` |
+| **URL** | `http://localhost:3000/api/users/2` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "email": "vendedor_nuevo@pos.com",
+  "roleId": 1
+}
 ```
 
 **Response (200):**
@@ -1241,11 +1284,13 @@ curl -X PUT http://localhost:3000/api/users/2 \
 ### `PATCH /users/:id/toggle` (Solo ADMIN)
 Activar o desactivar un usuario.
 
-**Request:**
-```bash
-curl -X PATCH http://localhost:3000/api/users/2/toggle \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PATCH` |
+| **URL** | `http://localhost:3000/api/users/2/toggle` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -1265,11 +1310,13 @@ curl -X PATCH http://localhost:3000/api/users/2/toggle \
 ### `GET /notifications`
 Listar notificaciones no leídas.
 
-**Request:**
-```bash
-curl -X GET http://localhost:3000/api/notifications \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/notifications` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -1300,11 +1347,13 @@ curl -X GET http://localhost:3000/api/notifications \
 ### `PATCH /notifications/:id/read`
 Marcar una notificación como leída.
 
-**Request:**
-```bash
-curl -X PATCH http://localhost:3000/api/notifications/1/read \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PATCH` |
+| **URL** | `http://localhost:3000/api/notifications/1/read` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -1320,11 +1369,13 @@ curl -X PATCH http://localhost:3000/api/notifications/1/read \
 ### `PATCH /notifications/read-all`
 Marcar todas las notificaciones como leídas.
 
-**Request:**
-```bash
-curl -X PATCH http://localhost:3000/api/notifications/read-all \
-  -H "Authorization: Bearer <token>"
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PATCH` |
+| **URL** | `http://localhost:3000/api/notifications/read-all` |
+| **Headers** | `Authorization: Bearer <token>` |
 
 **Response (200):**
 ```json
@@ -1341,10 +1392,12 @@ curl -X PATCH http://localhost:3000/api/notifications/read-all \
 ### `GET /health`
 Verificar que el servidor está activo.
 
-**Request:**
-```bash
-curl -X GET http://localhost:3000/api/health
-```
+**En Postman:**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/health` |
 
 **Response (200):**
 ```json
