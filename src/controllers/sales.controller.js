@@ -3,6 +3,8 @@ const { parsePagination, buildPaginationMeta } = require("../helpers/pagination.
 const { getPdfUrl, getDocumentById, sendBill } = require("../services/apisunat.service");
 const { generarComprobanteJson } = require("../utils/generarComprobanteJson");
 const { actualizarEstadoDocumento } = require("../services/electronicDocument.service");
+const { syncDocumentById } = require("../services/syncSunatStatus.service");
+const { crearDocumentoElectronico } = require("../services/electronicDocument.service");
 
 async function list(req, res, next) {
   try {
@@ -233,11 +235,18 @@ async function getPdf(req, res, next) {
       });
     }
 
+    // ✅ CORRECCIÓN: Validar que exista fileName
+    if (!electronicDoc.fileName) {
+      return res.status(404).json({ 
+        message: "No existe fileName del comprobante en SUNAT. El documento puede no haberse generado correctamente." 
+      });
+    }
+
     const format = req.query.format || "ticket80mm";
     const pdfUrl = getPdfUrl(
       electronicDoc.documentId,
       format,
-      electronicDoc.fileName || `${sale.serie}-${String(sale.correlativo).padStart(8, '0')}`
+      electronicDoc.fileName  // ✅ Usar SOLO el fileName guardado
     );
 
     res.json({
@@ -273,22 +282,7 @@ async function getSunatStatus(req, res, next) {
       });
     }
 
-    // Consultar estado actual a APISUNAT
-    const sunatResponse = await getDocumentById(electronicDoc.documentId);
-
-    // Actualizar estado en DB
-    await actualizarEstadoDocumento({
-      saleId: sale.id,
-      estado: sunatResponse.status,
-      documentId: electronicDoc.documentId,
-      respuestaSunat: sunatResponse,
-      observaciones: JSON.stringify({
-        faults: sunatResponse.faults || [],
-        notes: sunatResponse.notes || []
-      }),
-      xmlUrl: sunatResponse.xml || null,
-      cdrUrl: sunatResponse.cdr || null
-    });
+    const { sunatResponse } = await syncDocumentById(electronicDoc.documentId);
 
     res.json({
       ok: true,
@@ -303,7 +297,7 @@ async function getSunatStatus(req, res, next) {
     });
   } catch (err) {
     console.error('Error consultando estado SUNAT:', err);
-    res.status(500).json({
+    res.next(err).json({
       ok: false,
       message: err.message || "Error al consultar estado en SUNAT"
     });
@@ -361,16 +355,15 @@ async function retrySunat(req, res, next) {
       });
     }
 
-    // Verificar si ya tiene documentId (no reenviar si ya fue aceptado)
-    if (sale.electronicDocument?.documentId) {
-      const existingDoc = sale.electronicDocument;
-      if (existingDoc.sunatStatus === 'ACEPTADO') {
-        return res.status(400).json({ 
-          message: "El comprobante ya fue ACEPTADO por SUNAT. No se puede reenviar." 
-        });
-      }
+    const existingDoc = sale.electronicDocument;
+    
+    if (existingDoc && existingDoc.sunatStatus === 'ACEPTADO') {
+      return res.status(400).json({ 
+        message: "El comprobante ya fue ACEPTADO por SUNAT. No se puede reenviar." 
+      });
     }
 
+    // Obtener datos de la empresa
     const company = await salesService.getActiveCompany();
 
     if (!company) {
@@ -389,7 +382,7 @@ async function retrySunat(req, res, next) {
     const respuestaSunat = await sendBill(comprobanteJson);
 
     // Actualizar o crear documento electrónico
-    if (sale.electronicDocument) {
+    if (existingDoc) {
       await actualizarEstadoDocumento({
         saleId: sale.id,
         estado: respuestaSunat.status,
@@ -400,7 +393,6 @@ async function retrySunat(req, res, next) {
         cdrUrl: null
       });
     } else {
-      const { crearDocumentoElectronico } = require("../services/electronicDocument.service");
       await crearDocumentoElectronico({
         saleId: sale.id,
         tipoComprobante: sale.tipoComprobante,

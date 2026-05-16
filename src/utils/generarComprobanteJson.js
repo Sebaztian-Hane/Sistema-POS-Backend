@@ -219,18 +219,12 @@ const generarComprobanteJson = ({ company, sale }) => {
   });
 
   return {
-
     personaId: company.personaId,
-
     personaToken: company.personaToken,
-
     fileName,
-
     customerEmail:
       sale.customer?.email || undefined,
-
     documentBody: {
-
       "cbc:UBLVersionID": {
         "_text": "2.1"
       },
