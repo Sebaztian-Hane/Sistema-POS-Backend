@@ -1,6 +1,6 @@
 const salesService = require("../services/sales.service");
 const { parsePagination, buildPaginationMeta } = require("../helpers/pagination.helper");
-
+const { getPdfUrl } = require("../services/apisunat.service");
 async function list(req, res, next) {
   try {
     const { page, limit, skip } = parsePagination(req.query);
@@ -100,14 +100,12 @@ async function create(req, res, next) {
     // VALIDACIÓN #2: FACTURA REQUIERE RUC (CRÍTICO PARA SUNAT)
     // ============================================================
     if (tipoComprobante === 'FACTURA') {
-      // Factura debe tener documento
       if (!documentoCliente) {
         return res.status(400).json({
           message: "Factura requiere RUC del cliente"
         });
       }
       
-      // Factura requiere RUC (11 dígitos)
       const docLimpio = String(documentoCliente).trim();
       if (docLimpio.length !== 11) {
         return res.status(400).json({
@@ -115,7 +113,6 @@ async function create(req, res, next) {
         });
       }
       
-      // Validar que sea solo números
       if (!/^\d+$/.test(docLimpio)) {
         return res.status(400).json({
           message: "RUC debe contener solo números"
@@ -124,19 +121,16 @@ async function create(req, res, next) {
     }
 
     // ============================================================
-    // VALIDACIÓN #3: BOLETA - DOCUMENTO ES OPCIONAL (válido)
+    // VALIDACIÓN #3: BOLETA - DOCUMENTO ES OPCIONAL
     // ============================================================
-    // Si es BOLETA y tiene documento, validar formato
     if (tipoComprobante === 'BOLETA' && documentoCliente) {
       const docLimpio = String(documentoCliente).trim();
-      // Puede ser DNI (8 dígitos) o RUC (11 dígitos)
       if (docLimpio.length !== 8 && docLimpio.length !== 11) {
         return res.status(400).json({
           message: "documentoCliente para BOLETA debe ser DNI (8 dígitos) o RUC (11 dígitos)"
         });
       }
       
-      // Validar que sea solo números
       if (!/^\d+$/.test(docLimpio)) {
         return res.status(400).json({
           message: "Documento debe contener solo números"
@@ -144,19 +138,16 @@ async function create(req, res, next) {
       }
     }
 
-    // Validar items
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "items debe ser un array no vacío" });
     }
     
-    // Validar payments
     if (!Array.isArray(payments) || payments.length === 0) {
       return res.status(400).json({ message: "payments debe ser un array no vacío" });
     }
 
     const userId = req.user.id;
 
-    // Crear la venta
     const sale = await salesService.create({
       userId,
       documentoCliente,
@@ -167,7 +158,6 @@ async function create(req, res, next) {
       status,
     });
 
-    // Respuesta exitosa
     res.status(201).json({
       ok: true,
       message: "Venta creada exitosamente",
@@ -180,6 +170,7 @@ async function create(req, res, next) {
         fechaEmision: sale.fechaEmision,
         total: sale.total,
         customer: sale.customer,
+        electronicDocument: sale.electronicDocument,
         ...sale
       }
     });
@@ -198,7 +189,8 @@ async function anular(req, res, next) {
       return res.status(400).json({ message: "ID inválido" });
     }
 
-    const result = await salesService.anular(id);
+    const { motivo } = req.body;
+    const result = await salesService.anular(id, motivo || "ANULACION DE VENTA");
 
     res.json({
       ok: true,
@@ -213,9 +205,32 @@ async function anular(req, res, next) {
   }
 }
 
+async function getPdf(req, res, next) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const sale = await salesService.getOne(id);
+    
+    const electronicDoc = sale.electronicDocument;
+    if (!electronicDoc?.documentId) {
+      return res.status(404).json({ message: "Documento electrónico no encontrado" });
+    }
+
+    const pdfUrl = getPdfUrl(
+      electronicDoc.documentId,
+      req.query.format || "ticket80mm",
+      electronicDoc.fileName
+    );
+
+    res.json({ pdfUrl });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   list,
   getOne,
   create,
   anular,
+  getPdf
 };

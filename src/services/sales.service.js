@@ -4,7 +4,7 @@ const { calcularTotalesVenta } = require('../utils/calcularTotalesVenta');
 const { generarSerieCorrelativo } = require('../utils/generarSerieCorrelativo');
 const { buscarOcrearCliente } = require('./customerLookup.service');
 const { generarComprobanteJson } = require('../utils/generarComprobanteJson');
-const { crearDocumentoElectronico, actualizarEstadoDocumento } = require('./electronicDocument.service');
+const { crearDocumentoElectronico, actualizarEstadoDocumento, actualizarEstadoSimple } = require('./electronicDocument.service');
 const { sendBill, voidBill} = require('./apisunat.service');
 
 function toDecimal(value) {
@@ -441,11 +441,9 @@ async function create({
   });
 
   // ============================================================
-  // ============================================================
   // FUERA DEL TRANSACTION: ENVÍO A SUNAT
   // ============================================================
-  // ============================================================
-  
+
   // Solo enviar a SUNAT si la venta está COMPLETADA
   if (finalSale.status === "COMPLETADA") {
     try {
@@ -463,7 +461,7 @@ async function create({
         tipoComprobante: finalSale.tipoComprobante,
         serie: finalSale.serie,
         correlativo: finalSale.correlativo,
-        fileName: comprobanteJson.fileName,  // ← Agregar fileName
+        fileName: comprobanteJson.fileName,
         payloadJson: comprobanteJson
       });
       
@@ -474,7 +472,7 @@ async function create({
       
       console.log(`Respuesta SUNAT recibida:`, respuestaSunat);
       
-      // 4. Actualizar estado del documento según respuesta
+      // 4. Actualizar estado del documento (PENDIENTE con documentId)
       await actualizarEstadoDocumento({
         saleId: finalSale.id,
         estado: respuestaSunat.status,  // "PENDIENTE"
@@ -485,21 +483,17 @@ async function create({
         cdrUrl: null
       });
       
-      console.log(`✅ Comprobante ${finalSale.serie}-${finalSale.correlativo} enviado a SUNAT. Estado: ${respuestaSunat.status}`);
+      console.log(`✅ Comprobante ${finalSale.serie}-${finalSale.correlativo} enviado a SUNAT. DocumentId: ${respuestaSunat.documentId}`);
       
     } catch (error) {
       console.error('❌ Error en facturación electrónica:', error);
       
       // Registrar el error pero NO romper la venta
       try {
-        await actualizarEstadoDocumento({
+        await actualizarEstadoSimple({
           saleId: finalSale.id,
           estado: 'ERROR',
-          respuestaSunat: { error: error.message },
-          observaciones: error.message,
-          xmlUrl: null,
-          cdrUrl: null,
-          documentId: null
+          observaciones: error.message
         });
       } catch (dbError) {
         console.error('Error al registrar estado de documento:', dbError);
@@ -588,12 +582,11 @@ async function anular(id, motivoAnulacion = "ANULACION DE VENTA") {
           await tx.electronicDocument.update({
             where: { id: docElectronico.id },
             data: {
-              sunatStatus: 'ANULADO',  // Necesitas agregar 'ANULADO' al enum SunatStatus
+              sunatStatus: 'ANULADO',
               observaciones: `Anulado por: ${motivoAnulacion}. Respuesta SUNAT: ${JSON.stringify(voidBillResult)}`,
               respondedEn: new Date()
             }
           });
-
         } catch (error) {
           console.error('[ANULAR] Error al anular en APISUNAT:', error);
           
