@@ -90,6 +90,7 @@ enum SunatStatus {
   RECHAZADO
   EXCEPCION
   ANULADO
+  ERROR
 }
 
 enum CurrencyCode {

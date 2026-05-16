@@ -235,7 +235,7 @@ async function getPdf(req, res, next) {
       });
     }
 
-    // ✅ CORRECCIÓN: Validar que exista fileName
+    // Validar que exista fileName
     if (!electronicDoc.fileName) {
       return res.status(404).json({ 
         message: "No existe fileName del comprobante en SUNAT. El documento puede no haberse generado correctamente." 

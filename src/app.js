@@ -2,42 +2,51 @@ require("dotenv").config();
 
 const path = require("path");
 const express = require("express");
+const app = express();
 const cors = require("cors");
 
-const authRoutes = require("./routes/auth.routes");
-const productsRoutes = require("./routes/products.routes");
-const categoriesRoutes = require("./routes/categories.routes");
-const customersRoutes = require("./routes/customers.routes");
-const salesRoutes = require("./routes/sales.routes");
-const usersRoutes = require("./routes/users.routes");
-const notificationsRoutes = require("./routes/notifications.routes");
-const { authenticate } = require("./middlewares/auth.middleware");
-const { requireStaff } = require("./middlewares/role.middleware");
-const cron = require('node-cron');
-const { syncPendientes } = require('./services/syncSunatStatus.service');
-
-const app = express();
-
-const PORT = Number(process.env.PORT) || 3000;
-
+// ============================================================
+// 1. Middlewares GLOBALES (deben ir PRIMERO)
+// ============================================================
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || true,
     credentials: true,
   }),
 );
-app.use(express.json());
+app.use(express.json());           // ✅ Esto debe ir ANTES de las rutas
 app.use(express.urlencoded({ extended: true }));
 
+// ============================================================
+// 2. Rutas PÚBLICAS (sin autenticación)
+// ============================================================
+const authRoutes = require("./routes/auth.routes");
+app.use("/api/auth", authRoutes);
+
+// Health check (público)
 app.get("/api/health", (req, res) => {
   res.json({ ok: true, name: "Eagle Gaming POS API" });
 });
 
-app.use("/api/auth", authRoutes);
+// ============================================================
+// 3. Middleware de AUTENTICACIÓN
+// ============================================================
+const { authenticate } = require("./middlewares/auth.middleware");
+const { requireStaff } = require("./middlewares/role.middleware");
+
+// ============================================================
+// 4. Rutas PROTEGIDAS (requieren autenticación)
+// ============================================================
+const productsRoutes = require("./routes/products.routes");
+const categoriesRoutes = require("./routes/categories.routes");
+const customersRoutes = require("./routes/customers.routes");
+const salesRoutes = require("./routes/sales.routes");
+const usersRoutes = require("./routes/users.routes");
+const notificationsRoutes = require("./routes/notifications.routes");
 
 const api = express.Router();
-api.use(authenticate);
-api.use(requireStaff);
+api.use(authenticate);      // ✅ Primero verifica token
+api.use(requireStaff);      // ✅ Luego verifica rol
 
 api.use("/products", productsRoutes);
 api.use("/categories", categoriesRoutes);
@@ -48,6 +57,9 @@ api.use("/notifications", notificationsRoutes);
 
 app.use("/api", api);
 
+// ============================================================
+// 5. Manejo de errores (SIEMPRE al final)
+// ============================================================
 app.use((req, res) => {
   res.status(404).json({ message: "Ruta no encontrada" });
 });
@@ -60,21 +72,32 @@ app.use((err, req, res, _next) => {
   });
 });
 
+// ============================================================
+// 6. Cron job para sincronizar SUNAT
+// ============================================================
+const cron = require('node-cron');
+const { syncPendientes } = require('./services/syncSunatStatus.service');
+
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    console.log('[CRON] Ejecutando syncSunatStatus...');
+    await syncPendientes();
+  } catch (error) {
+    console.error('[CRON ERROR]', error);
+  }
+});
+
+// ============================================================
+// 7. Servidor
+// ============================================================
+const PORT = Number(process.env.PORT) || 3000;
+
 module.exports = app;
 
-/**
- * Arranque solo cuando este archivo es el punto de entrada (node / nodemon).
- * En Windows a veces require.main === module falla con rutas distintas; se
- * compara también process.argv[1] con __filename resueltos.
- */
 function shouldStartServer() {
-  if (require.main === module) {
-    return true;
-  }
+  if (require.main === module) return true;
   const entry = process.argv[1];
-  if (!entry || !require.main?.filename) {
-    return false;
-  }
+  if (!entry || !require.main?.filename) return false;
   return path.resolve(entry) === path.resolve(__filename);
 }
 
@@ -97,22 +120,3 @@ if (shouldStartServer()) {
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 }
-
-cron.schedule('*/5 * * * *', async () => {
-
-  try {
-
-    console.log(
-      '[CRON] Ejecutando syncSunatStatus...'
-    );
-
-    await syncPendientes();
-
-  } catch (error) {
-
-    console.error(
-      '[CRON ERROR]',
-      error
-    );
-  }
-});

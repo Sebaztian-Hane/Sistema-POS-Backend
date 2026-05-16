@@ -12,12 +12,18 @@ async function buscarOcrearCliente(documento) {
 
     // Detectar tipo documento
     let tipoDocumento;
+    // ✅ BIEN - Primero validar que sean solo números
     if (!/^\d+$/.test(documentoLimpio)) {
-      tipoDocumento = 'DNI';
+    throw new Error(`Documento inválido: debe contener solo números. Recibido: ${documentoLimpio}`);
+    }
+
+    // Luego validar longitud
+    if (documentoLimpio.length === 8) {
+    tipoDocumento = 'DNI';
     } else if (documentoLimpio.length === 11) {
-      tipoDocumento = 'RUC';
+    tipoDocumento = 'RUC';
     } else {
-      throw new Error(`Documento inválido: debe tener 8 (DNI) o 11 (RUC) dígitos. Recibido: ${documentoLimpio.length}`);
+    throw new Error(`Documento inválido: debe tener 8 (DNI) o 11 (RUC) dígitos. Recibido: ${documentoLimpio.length}`);
     }
 
     // Buscar cliente local

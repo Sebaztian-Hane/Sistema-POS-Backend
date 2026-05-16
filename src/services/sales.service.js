@@ -259,10 +259,12 @@ async function create({
       const descuentoItem = Number(item.descuento ?? 0);
       const descuentoTotalItem = roundTo2(descuentoItem + descuentoExtraPorItem);
       
+      const precioConIgv = Number(p.price);
+      
       return {
         productId: parseInt(item.productId, 10),
         nombreSnapshot: p.name,
-        precio: Number(p.price),
+        precio: precioConIgv,
         quantity: parseInt(item.quantity, 10),
         descuento: descuentoTotalItem,
       };
@@ -287,16 +289,17 @@ async function create({
 
     // Validar pagos
     const paySum = paymentInputs.reduce((acc, p) => acc.add(p.amount), new Prisma.Decimal(0));
-    const diferenciaPagos = Math.abs(decNum(paySum) - totalFinal);
-    
+    const totalConIgv = totalesCalculados.total;
+    const diferenciaPagos = Math.abs(decNum(paySum) - totalConIgv);
+
     if (diferenciaPagos > 0.02) {
       throw Object.assign(
-        new Error(`La suma de pagos (${decNum(paySum)}) no coincide con el total (${totalFinal}). Diferencia: ${diferenciaPagos}`), 
+        new Error(`La suma de pagos (${decNum(paySum)}) no coincide con el total (${totalConIgv}). Diferencia: ${diferenciaPagos}`), 
         { statusCode: 400 }
       );
     }
-    
-    let totalParaGuardar = totalFinal;
+
+    let totalParaGuardar = totalConIgv;
     if (diferenciaPagos > 0 && diferenciaPagos <= 0.02) {
       totalParaGuardar = decNum(paySum);
     }

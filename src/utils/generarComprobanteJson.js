@@ -1,5 +1,4 @@
-const { NumeroALetras } = require('numero-a-letras');
-
+const NumeroALetras = require('./NumeroALetras'); 
 const generarComprobanteJson = ({ company, sale }) => {
 
   const fecha = new Date(sale.fechaEmision || sale.createdAt);
@@ -55,25 +54,20 @@ const generarComprobanteJson = ({ company, sale }) => {
     }
   })();
 
-
   const obtenerMontoLetras = (monto) => {
     try {
-      // Convertir a número y separar parte entera y decimal
       const numero = Number(monto);
       const parteEntera = Math.floor(numero);
       const parteDecimal = Math.round((numero - parteEntera) * 100);
       
-      // Convertir la parte entera a letras
       const letrasEntero = NumeroALetras(parteEntera);
-      
-      // Formato SUNAT: "TRES MIL QUINIENTOS Y 00/100 SOLES"
       const decimalFormateado = parteDecimal.toString().padStart(2, '0');
       
-      return `${letrasEntero} Y ${decimalFormateado}/100 SOLES`;
+      // ✅ Agregar espacio al inicio
+      return ` ${letrasEntero} CON ${decimalFormateado}/100 SOLES`;
     } catch (error) {
       console.error('Error al convertir monto a letras:', error);
-      // Fallback seguro
-      return `${Number(monto).toFixed(2)} SOLES`;
+      return ` ${Number(monto).toFixed(2)} SOLES`;  // ✅ También con espacio
     }
   };
 
@@ -228,11 +222,9 @@ const generarComprobanteJson = ({ company, sale }) => {
       "cbc:UBLVersionID": {
         "_text": "2.1"
       },
-
       "cbc:CustomizationID": {
         "_text": "2.0"
       },
-
       "cbc:ID": {
         "_text": numeroComprobante
       },
@@ -254,15 +246,11 @@ const generarComprobanteJson = ({ company, sale }) => {
         "_text": tipoDocSunat
       },
 
-      // ✅ NOTA con monto en letras (formato SUNAT)
       "cbc:Note": [
-
         {
-
           "_text": montoLetras,
-
           "_attributes": {
-            "languageLocaleID": "1000"  // 1000 = Español
+            "languageLocaleID": "1000"
           }
         }
       ],
@@ -280,7 +268,7 @@ const generarComprobanteJson = ({ company, sale }) => {
             "cbc:ID": {
 
               "_attributes": {
-                "schemeID": "6"  // 6 = RUC
+                "schemeID": "6"
               },
 
               "_text": company.ruc

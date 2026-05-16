@@ -35,8 +35,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
     "nodemon": "^3.1.14",
-    "numero-a-letras": "^1.0.6",
     "pg": "^8.20.0",
     "prisma": "^7.7.0"
   }
