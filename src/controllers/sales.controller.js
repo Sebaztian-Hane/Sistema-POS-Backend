@@ -297,10 +297,7 @@ async function getSunatStatus(req, res, next) {
     });
   } catch (err) {
     console.error('Error consultando estado SUNAT:', err);
-    res.next(err).json({
-      ok: false,
-      message: err.message || "Error al consultar estado en SUNAT"
-    });
+    next(err);
   }
 }
 
