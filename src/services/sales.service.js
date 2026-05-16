@@ -661,10 +661,60 @@ async function anular(id, motivoAnulacion = "ANULACION DE VENTA") {
     return updated;
   });
 }
+// ============================================================
+// NUEVAS FUNCIONES PARA ELECTRONIC DOCUMENT
+// ============================================================
+
+/**
+ * Obtener documento electrónico por saleId
+ */
+async function getElectronicDocumentBySaleId(saleId) {
+  return await prisma.electronicDocument.findUnique({
+    where: { saleId }
+  });
+}
+
+/**
+ * Actualizar estado de documento electrónico manualmente
+ */
+async function updateElectronicDocumentStatus(saleId, statusData) {
+  const { actualizarEstadoDocumento } = require('./electronicDocument.service');
+  return await actualizarEstadoDocumento({
+    saleId,
+    ...statusData
+  });
+}
+
+/**
+ * Obtener venta con documento electrónico para reenvío
+ */
+async function getSaleWithElectronicDoc(id) {
+  return await prisma.sale.findUnique({
+    where: { id },
+    include: {
+      customer: true,
+      items: true,
+      electronicDocument: true
+    }
+  });
+}
+
+/**
+ * Obtener datos de la empresa activa
+ */
+async function getActiveCompany() {
+  return await prisma.company.findFirst({
+    where: { isActive: true }
+  });
+}
 
 module.exports = {
   list,
   getOne,
   create,
   anular,
+  getElectronicDocumentBySaleId,
+  updateElectronicDocumentStatus,
+  getSaleWithElectronicDoc,
+  getActiveCompany
 };
