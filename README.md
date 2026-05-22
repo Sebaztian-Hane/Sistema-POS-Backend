@@ -1546,21 +1546,19 @@ Role ──────────────── User ───────
 
 ### Usar el token
 
-```bash
-# 1. Obtener el token
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@pos.com",
-    "password": "admin123"
-  }' \
-  | jq -r '.token' > token.txt
+**En Postman:**
 
-# 2. Usar el token en peticiones protegidas
-TOKEN=$(cat token.txt)
+1. Haz un request a `POST /api/auth/login` con tus credenciales
+2. Copia el valor del campo `token` de la respuesta
+3. En los siguientes requests, ve a la pestaña **Headers**
+4. Añade un nuevo header:
+   - **Key:** `Authorization`
+   - **Value:** `Bearer <pega_aqui_el_token>`
 
-curl -X GET http://localhost:3000/api/products \
-  -H "Authorization: Bearer $TOKEN"
+**Ejemplo:**
+```
+Key:   Authorization
+Value: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 ### Roles y permisos
@@ -1726,90 +1724,126 @@ Esto es por diseño para garantizar que:
 
 ### Flujo completo: Vendedor vende 2 productos con múltiples pagos
 
-**Paso 1: Login**
-```bash
-TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "vendedor1@pos.com",
-    "password": "vendedor123"
-  }' | jq -r '.token')
+**Paso 1: Login en Postman**
 
-echo "Token obtenido: $TOKEN"
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/auth/login` |
+| **Headers** | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "email": "vendedor1@pos.com",
+  "password": "vendedor123"
+}
 ```
 
-**Paso 2: Consultar productos disponibles**
-```bash
-curl -X GET http://localhost:3000/api/products \
-  -H "Authorization: Bearer $TOKEN" | jq '.data[] | {id, name, price, stockCurrent}'
+Copia el token (`token`) de la respuesta y úsalo en los siguientes requests en el header `Authorization: Bearer <token>`
+
+---
+
+**Paso 2: Consultar productos disponibles en Postman**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/products` |
+| **Headers** | `Authorization: Bearer <token>` |
+
+---
+
+**Paso 3: Buscar o crear cliente (con validación SUNAT) en Postman**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/customers` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "tipoDocumento": "DNI",
+  "nroDocumento": "12345678",
+  "email": "cliente@email.com",
+  "telefono": "987654321"
+}
 ```
 
-**Paso 3: Buscar o crear cliente (con validación SUNAT)**
-```bash
-# El sistema valida automáticamente contra SUNAT si proporcionas DNI o RUC real
-# Ejemplo con DNI (8 dígitos):
-CUSTOMER_ID=$(curl -s -X POST http://localhost:3000/api/customers \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tipoDocumento": "DNI",
-    "nroDocumento": "12345678",
-    "email": "cliente@email.com",
-    "telefono": "987654321"
-  }' | jq -r '.id')
+> ⚠️ El DNI/RUC debe ser REAL y estar registrado en SUNAT. Si es inválido, devuelve error 400
 
-echo "Cliente creado/encontrado: $CUSTOMER_ID"
+---
 
-# ⚠️ El DNI/RUC debe ser REAL y estar registrado en SUNAT
-# Si es inválido, devuelve error 400
+**Paso 4: Crear venta en Postman**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `POST` |
+| **URL** | `http://localhost:3000/api/sales` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "tipoComprobante": "BOLETA",
+  "customerId": 1,
+  "items": [
+    {
+      "productId": 1,
+      "quantity": 2,
+      "descuento": 10
+    },
+    {
+      "productId": 2,
+      "quantity": 1,
+      "descuento": 0
+    }
+  ],
+  "payments": [
+    {
+      "paymentMethodId": 1,
+      "amount": 150
+    },
+    {
+      "paymentMethodId": 3,
+      "amount": 100
+    }
+  ]
+}
 ```
 
-**Paso 4: Crear venta**
-```bash
-curl -X POST http://localhost:3000/api/sales \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tipoComprobante": "BOLETA",
-    "customerId": 1,
-    "items": [
-      {
-        "productId": 1,
-        "quantity": 2,
-        "descuento": 10
-      },
-      {
-        "productId": 2,
-        "quantity": 1,
-        "descuento": 0
-      }
-    ],
-    "payments": [
-      {
-        "paymentMethodId": 1,
-        "amount": 150
-      },
-      {
-        "paymentMethodId": 3,
-        "amount": 100
-      }
-    ]
-  }' | jq '.id'
-```
+Copia el ID de la venta (`id`) de la respuesta para los siguientes pasos.
 
-**Paso 5: Consultar la venta**
-```bash
-SALE_ID=1
-curl -X GET http://localhost:3000/api/sales/$SALE_ID \
-  -H "Authorization: Bearer $TOKEN" | jq '{id, total, status, items: (.items | length), payments: (.payments | length)}'
-```
+---
 
-**Paso 6: Anular la venta (si es necesario)**
-```bash
-curl -X PATCH http://localhost:3000/api/sales/$SALE_ID/anular \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"razon": "Cliente cambió de opinión"}'
+**Paso 5: Consultar la venta en Postman**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `GET` |
+| **URL** | `http://localhost:3000/api/sales/1` |
+| **Headers** | `Authorization: Bearer <token>` |
+
+---
+
+**Paso 6: Anular la venta (si es necesario) en Postman**
+
+| Campo | Valor |
+|---|---|
+| **Método** | `PATCH` |
+| **URL** | `http://localhost:3000/api/sales/1/anular` |
+| **Headers** | `Authorization: Bearer <token>` |
+| | `Content-Type: application/json` |
+
+**Body (JSON):**
+```json
+{
+  "razon": "Cliente cambió de opinión"
+}
 ```
 
 ---

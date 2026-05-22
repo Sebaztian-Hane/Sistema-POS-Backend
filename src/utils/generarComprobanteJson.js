@@ -1,16 +1,11 @@
 const NumeroALetras = require('./NumeroALetras'); 
 const generarComprobanteJson = ({ company, sale }) => {
-
   const fecha = new Date(sale.fechaEmision || sale.createdAt);
-
   const issueDate = fecha.toISOString().split('T')[0];
-
   const issueTime = fecha.toLocaleTimeString('en-GB', { hour12: false });
 
   const mapaTipoDocumento = {
-
     FACTURA: '01',
-
     BOLETA: '03'
   };
 
@@ -63,11 +58,11 @@ const generarComprobanteJson = ({ company, sale }) => {
       const letrasEntero = NumeroALetras(parteEntera);
       const decimalFormateado = parteDecimal.toString().padStart(2, '0');
       
-      // ✅ Agregar espacio al inicio
-      return ` ${letrasEntero} CON ${decimalFormateado}/100 SOLES`;
+
+      return `${letrasEntero} CON ${decimalFormateado}/100 SOLES`;
     } catch (error) {
       console.error('Error al convertir monto a letras:', error);
-      return ` ${Number(monto).toFixed(2)} SOLES`;  // ✅ También con espacio
+      return `${Number(monto).toFixed(2)} SOLES`;
     }
   };
 
@@ -77,7 +72,7 @@ const generarComprobanteJson = ({ company, sale }) => {
 
   const invoiceLines = sale.items.map((item, index) => {
 
-    // Calcular valor unitario sin IGV (precioSnapshot ya incluye IGV)
+    // Calcular valor unitario sin IGV
     const valorUnitarioSinIgv = Number(item.valorUnitario);
     const precioUnitarioConIgv = Number(item.precioSnapshot);
     const cantidad = item.quantity;
@@ -117,7 +112,7 @@ const generarComprobanteJson = ({ company, sale }) => {
           },
 
           "cbc:PriceTypeCode": {
-            "_text": "01"  // 01 = Precio unitario (incluye IGV)
+            "_text": "01"
           }
         }
       },
@@ -162,13 +157,13 @@ const generarComprobanteJson = ({ company, sale }) => {
               },
 
               "cbc:TaxExemptionReasonCode": {
-                "_text": "10"  // 10 = Gravado
+                "_text": "10"
               },
 
               "cac:TaxScheme": {
 
                 "cbc:ID": {
-                  "_text": "1000"  // 1000 = IGV
+                  "_text": "1000"
                 },
 
                 "cbc:Name": {
@@ -176,7 +171,7 @@ const generarComprobanteJson = ({ company, sale }) => {
                 },
 
                 "cbc:TaxTypeCode": {
-                  "_text": "VAT"  // VAT = Impuesto al Valor Agregado
+                  "_text": "VAT"
                 }
               }
             }
@@ -295,7 +290,7 @@ const generarComprobanteJson = ({ company, sale }) => {
             "cac:RegistrationAddress": {
 
               "cbc:AddressTypeCode": {
-                "_text": "0000"  // 0000 = Dirección fiscal
+                "_text": "0000"
               },
 
               "cac:AddressLine": {
@@ -333,7 +328,6 @@ const generarComprobanteJson = ({ company, sale }) => {
             }
           },
 
-          // Dirección del cliente (opcional)
           ...(sale.customer?.direccion && {
             "cac:PhysicalLocation": {
               "cac:Address": {
